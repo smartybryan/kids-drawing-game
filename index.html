@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Coloring Book</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ============ PICKER SCREEN ============ -->
+<section id="picker-screen" class="screen">
+  <h1 class="title">Pick a picture to color!</h1>
+  <div id="gallery" class="gallery"></div>
+</section>
+
+<!-- ============ COLORING SCREEN ============ -->
+<section id="color-screen" class="screen hidden">
+  <header class="toolbar">
+    <button id="btn-back" class="tool-btn" title="Back to pictures">&#8592; Pictures</button>
+    <span id="drawing-name" class="drawing-name"></span>
+    <span class="toolbar-spacer"></span>
+    <button id="btn-undo" class="tool-btn" title="Undo">&#8630; Undo</button>
+    <button id="btn-clear" class="tool-btn" title="Start over">Start Over</button>
+    <button id="btn-save" class="tool-btn tool-btn-primary" title="Save picture">&#11015; Save</button>
+  </header>
+
+  <div class="canvas-wrap">
+    <div id="canvas" class="canvas"></div>
+  </div>
+
+  <footer class="palette-bar">
+    <div id="palette" class="palette"></div>
+  </footer>
+</section>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="drawings.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
