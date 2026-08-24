@@ -13,7 +13,7 @@ Netlify, a folder served by `python3 -m http.server`). Copy all four files.
 
 ## What it does
 
-- **Five pictures** to choose from: fish, cat, butterfly, turtle, owl.
+- **Six pictures** to choose from: fish, cat, butterfly, turtle, owl, giraffe.
 - **16 colors**, including white, which acts as an eraser.
 - **The background is colorable too** — tap any empty space around the animal.
 - **Undo** (also Ctrl/Cmd-Z) and **Start Over**.

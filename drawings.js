@@ -215,6 +215,64 @@ const DRAWINGS = [
       <path class="line" d="M 224 348 L 230 368"/>
       <rect class="region" x="50" y="358" width="300" height="24" rx="12"/>
     `
+  },
+
+  /* -------------------------------------------------------------- GIRAFFE */
+  {
+    id: 'giraffe',
+    name: 'Giraffe',
+    viewBox: '0 0 400 400',
+    svg: `
+      <!-- tail, legs and mane first: the body and neck hide the joins -->
+      <path class="region" d="M 100 214 C 74 230 54 258 50 288 L 76 294 C 80 264 92 244 114 232 Z"/>
+      <path class="region" d="M 50 284 C 40 294 38 310 48 318 C 58 326 70 318 70 306
+                              C 70 294 60 282 50 284 Z"/>
+
+      <path class="region" d="M 108 278 C 104 312 104 334 106 350 L 130 350 C 130 332 130 308 132 278 Z"/>
+      <path class="region" d="M 142 278 C 138 312 138 334 140 350 L 164 350 C 164 332 162 308 164 278 Z"/>
+      <path class="region" d="M 190 278 C 186 312 186 334 188 350 L 212 350 C 212 332 210 308 212 278 Z"/>
+      <path class="region" d="M 222 278 C 218 312 218 334 220 350 L 244 350 C 244 332 242 308 244 278 Z"/>
+      <path class="region" d="M 104 350 L 132 350 L 134 368 L 102 368 Z"/>
+      <path class="region" d="M 138 350 L 166 350 L 168 368 L 136 368 Z"/>
+      <path class="region" d="M 186 350 L 214 350 L 216 368 L 184 368 Z"/>
+      <path class="region" d="M 218 350 L 246 350 L 248 368 L 216 368 Z"/>
+
+      <path class="region" d="M 244 92 C 220 140 198 192 194 246 L 174 240
+                              C 178 186 202 132 228 84 Z"/>
+
+      <!-- neck, then body over its base -->
+      <path class="region" d="M 244 92 C 220 140 198 192 194 246 L 250 252
+                              C 256 198 276 148 298 104 Z"/>
+      <path class="region" d="M 78 250 C 78 212 108 196 160 196 C 218 196 254 214 254 254
+                              C 254 292 220 306 160 306 C 108 306 78 288 78 250 Z"/>
+
+      <!-- horns and ear tuck behind the head -->
+      <path class="region" d="M 256 60 C 250 42 252 26 260 24 C 268 22 272 36 270 58 Z"/>
+      <path class="region" d="M 288 50 C 286 32 292 20 300 20 C 308 20 310 34 304 52 Z"/>
+      <circle class="region" cx="262" cy="22" r="9"/>
+      <circle class="region" cx="302" cy="20" r="9"/>
+      <path class="region" d="M 254 70 C 238 56 220 56 216 66 C 212 76 230 86 252 84 Z"/>
+
+      <path class="region" d="M 246 98 C 236 76 246 52 270 46 C 294 40 318 50 332 64
+                              C 342 74 340 86 326 90 C 300 97 264 104 248 102 Z"/>
+
+      <!-- spots -->
+      <path class="region" d="M 106 226 L 126 218 L 140 230 L 136 248 L 118 256 L 102 244 Z"/>
+      <path class="region" d="M 158 212 L 180 208 L 192 222 L 186 240 L 166 246 L 152 232 Z"/>
+      <path class="region" d="M 96 266 L 116 260 L 128 272 L 124 288 L 106 294 L 92 280 Z"/>
+      <path class="region" d="M 152 260 L 174 256 L 188 268 L 184 286 L 164 292 L 148 278 Z"/>
+      <path class="region" d="M 200 238 L 220 234 L 232 246 L 228 262 L 210 268 L 196 254 Z"/>
+      <path class="region" d="M 222 176 L 240 172 L 250 182 L 246 196 L 228 200 L 218 188 Z"/>
+      <path class="region" d="M 235 142 L 253 138 L 263 148 L 259 162 L 241 166 L 231 154 Z"/>
+      <path class="region" d="M 244 110 L 262 106 L 272 116 L 268 130 L 250 134 L 240 122 Z"/>
+
+      <!-- face -->
+      <circle class="region" cx="272" cy="64" r="11"/>
+      <circle class="ink" cx="273" cy="65" r="5"/>
+      <ellipse class="ink" cx="326" cy="72" rx="4.5" ry="3.5"/>
+      <path class="line" d="M 336 82 C 328 88 316 90 306 88"/>
+      <path class="line" d="M 26 370 L 374 370"/>
+    `
   }
 
 ];
