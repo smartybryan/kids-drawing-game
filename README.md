@@ -104,7 +104,21 @@ whole drawing is *one* black path whose closed subpaths cut the holes that read
 as lines. Dropped in as-is it is a black silhouette — nothing to color, and the
 `region`/`ink` classes have nothing to attach to.
 
-Turning one into a coloring page (the lion came in this way):
+`tools/import-svg-sheet.js` does this for a sheet of them. It never writes to
+`drawings.js` — it prints an entry for you to read and paste in:
+
+```
+node tools/import-svg-sheet.js sheet.svg --list              # what's in there
+node tools/import-svg-sheet.js sheet.svg --group 7 --preview /tmp/a.svg
+node tools/import-svg-sheet.js sheet.svg --group 7 --id fox --name Fox
+```
+
+The preview colors every shape it found differently, which is how you check the
+split before committing to it — and how you work out which animal group 7 even
+is, since the groups usually have no names.
+
+What it is doing, and what to do by hand if a sheet is built differently (the
+lion came in this way):
 
 1. **Fix the grid.** Clip art is rarely drawn on a 0–400 grid; the lion's art
    sat between 1220 and 1970 on x, which put all of it outside the `viewBox`, so
