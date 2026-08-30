@@ -13,13 +13,12 @@ Netlify, a folder served by `python3 -m http.server`). Copy all four files.
 
 ## What it does
 
-- **25 pictures** to choose from: the five original hand-drawn ones (fish, cat,
-  butterfly, turtle, owl) plus twenty animals converted from a clip art sheet —
-  lion, elephant, rabbit, gorilla, penguin, tiger, zebra, monkey, giraffe, fox,
-  deer, lamb, hedgehog, puppy, bear, teddy bear, duckling, chick, and a baby owl
-  and baby turtle.
+- **29 pictures**, of two kinds. Most are *coloring* pages: tap a shape and it
+  fills. Three are *painting* pages (rhino, sloth, hippo) with a brush instead —
+  see **Two kinds of page** below.
 - **16 colors**, including white, which acts as an eraser.
 - **The background is colorable too** — tap any empty space around the animal.
+- **Three brush sizes** on the painting pages.
 - **Undo** (also Ctrl/Cmd-Z) and **Start Over**.
 - **Zoom and pan** for pictures with small parts — pinch or scroll to zoom, drag
   to move around, or use the round buttons in the corner of the page. See
@@ -28,6 +27,37 @@ Netlify, a folder served by `python3 -m http.server`). Copy all four files.
   emailing to grandma.
 - Colors are remembered per picture, so closing the tab doesn't lose the work.
   The gallery thumbnails show each picture as it was last left.
+
+## Two kinds of page
+
+A drawing entry with `mode: 'paint'` behaves completely differently from the
+default. It is worth knowing why both exist.
+
+Tap-to-fill is the better toy for the youngest child: no motor skill at all, and
+the result is always tidy. But it demands art built out of closed shapes, one
+per thing you would want to color. A lot of clip art is not built that way — see
+**Using clip art from somewhere else** — and for those pictures flood fill either
+has nothing to fill or fills several unrelated features at once.
+
+A brush does not care. It needs no shapes, so any drawing at all can become a
+painting page, and it suits an older child who wants to choose where the color
+goes. The pictures that could not be made into coloring pages became painting
+pages instead.
+
+**How it works.** The child paints on a `<canvas>` that sits *underneath* the
+outlines, which are drawn over the top of it. So paint can wander across a line —
+that is what coloring outside the lines is — but it can never cover one. No
+clipping, no masking, no hit testing; the whole "don't paint over the outlines"
+requirement is just the stacking order.
+
+**What is stored** is a list of strokes — a color, a width, and a run of points
+in the picture's own `0 0 400 400` space — not a grid of pixels. Everything falls
+out of that: undo is dropping the last stroke and drawing the rest again, saving
+is a little JSON, and the same strokes redraw sharply at any zoom and on any
+screen, because they were never committed to a particular pixel grid.
+
+**Gestures.** One finger always paints, so panning moves to two fingers (which
+also pinch to zoom). On a coloring page a one-finger drag still pans, as before.
 
 ## How the coloring works
 
@@ -45,6 +75,10 @@ Three CSS classes carry all the meaning:
 | `ink` | solid black detail, like a pupil | no |
 | `line` | a stroke-only detail, like a whisker | no |
 | `paper` | blank sheet under a picture that carries its own outlines | no |
+
+A painting page uses none of these except `ink`: it has no fillable shapes at
+all, only outlines, and gets no backdrop rectangle — an opaque one would hide the
+brushwork underneath it.
 
 ## Zooming in
 
@@ -111,7 +145,12 @@ as lines. Dropped in as-is it is a black silhouette — nothing to color, and th
 node tools/import-svg-sheet.js sheet.svg --list              # what's in there
 node tools/import-svg-sheet.js sheet.svg --group 7 --preview /tmp/a.svg
 node tools/import-svg-sheet.js sheet.svg --group 7 --id fox --name Fox
+node tools/import-svg-sheet.js sheet.svg --group 7 --paint --id fox --name Fox
 ```
+
+`--paint` makes a painting page instead, and skips every check below: a brush
+needs no closed shapes, so a drawing that is hopeless for flood fill converts
+fine. If a picture you want fails the checks, that is the fallback.
 
 The preview colors every shape it found differently, which is how you check the
 split before committing to it — and how you work out which animal group 7 even

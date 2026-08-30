@@ -49,49 +49,187 @@ const WRAP = 92;                     // wrap path data at this column
 
 /* --------------------------------------------------------------- path data */
 
-/* Walk a path, reporting flattened points (for measuring) and raw segments (for
- * rewriting). Everything this art uses, and nothing it doesn't: an arc or a
- * shorthand curve throws rather than being silently mangled. */
-function walk(d, onPoint, onSegment) {
-  const tokens = d.match(/[A-Za-z]|-?[\d.]+(?:e-?\d+)?/g) || [];
-  let i = 0, cmd = '', cx = 0, cy = 0, sx = 0, sy = 0;
-  const num = () => parseFloat(tokens[i++]);
-
-  while (i < tokens.length) {
-    if (/[A-Za-z]/.test(tokens[i])) cmd = tokens[i++];
-    const rel = cmd === cmd.toLowerCase();
-    const ox = rel ? cx : 0, oy = rel ? cy : 0;
-
-    switch (cmd.toUpperCase()) {
-      case 'M': case 'L': {
-        const x = ox + num(), y = oy + num();
-        if (cmd.toUpperCase() === 'M') { sx = x; sy = y; }
-        onSegment && onSegment(cmd, [x - ox, y - oy], [x, y]);
-        onPoint(x, y);
-        cx = x; cy = y;
-        if (cmd === 'M') cmd = 'L'; else if (cmd === 'm') cmd = 'l';  // repeats are implicit linetos
+/* A character scanner rather than a token regex, because path data has two
+ * traps a regex walks straight into:
+ *
+ *   "-1.71.39"   is two numbers, -1.71 and .39. A number ends at its second
+ *                dot, and exporters lean on that to save bytes.
+ *   "a5 5 0 011 10"  the two arc flags are single characters and may be run
+ *                together with each other and with the number after them.
+ *
+ * Both parse as something plausible if you tokenize naively, which is worse
+ * than failing: the shape just comes out subtly wrong. */
+function scanner(d) {
+  let i = 0;
+  const sep = () => { while (i < d.length && (d[i] === ' ' || d[i] === ',' || d[i] === '\n' ||
+                                              d[i] === '\r' || d[i] === '\t')) i++; };
+  return {
+    done() { sep(); return i >= d.length; },
+    peekCommand() { sep(); return i < d.length && /[A-Za-z]/.test(d[i]) ? d[i] : null; },
+    takeCommand() { sep(); return d[i++]; },
+    number() {
+      sep();
+      const start = i;
+      if (d[i] === '+' || d[i] === '-') i++;
+      let dot = false;
+      while (i < d.length) {
+        const c = d[i];
+        if (c >= '0' && c <= '9') { i++; continue; }
+        if (c === '.' && !dot) { dot = true; i++; continue; }   // a second dot starts a new number
         break;
       }
-      case 'C': {
-        const x1 = ox + num(), y1 = oy + num(),
-              x2 = ox + num(), y2 = oy + num(),
-              x = ox + num(), y = oy + num();
-        for (let t = 0.05; t <= 1.0001; t += 0.05) {      // flatten for measuring
+      if ((d[i] === 'e' || d[i] === 'E') && /[\d+-]/.test(d[i + 1] || '')) {
+        i++;
+        if (d[i] === '+' || d[i] === '-') i++;
+        while (i < d.length && d[i] >= '0' && d[i] <= '9') i++;
+      }
+      const text = d.slice(start, i);
+      if (!text || text === '-' || text === '+' || text === '.') {
+        throw new Error(`bad number in path data near "${d.slice(start, start + 24)}"`);
+      }
+      return parseFloat(text);
+    },
+    flag() {                                     // arc flags: exactly one character
+      sep();
+      const c = d[i++];
+      if (c !== '0' && c !== '1') throw new Error(`bad arc flag "${c}" in path data`);
+      return c === '1' ? 1 : 0;
+    },
+  };
+}
+
+/* Sample an elliptical arc, converting SVG's endpoint form to the centre form
+ * (F.6.5 in the SVG spec) so it can be measured like any other curve. */
+function sampleArc(x1, y1, rx, ry, rotation, largeArc, sweep, x2, y2, onPoint) {
+  if (!rx || !ry) { onPoint(x2, y2); return; }               // degenerate: a straight line
+  rx = Math.abs(rx); ry = Math.abs(ry);
+
+  const phi = (rotation * Math.PI) / 180, cos = Math.cos(phi), sin = Math.sin(phi);
+  const dx = (x1 - x2) / 2, dy = (y1 - y2) / 2;
+  const px = cos * dx + sin * dy, py = -sin * dx + cos * dy;
+
+  const scale = (px * px) / (rx * rx) + (py * py) / (ry * ry);
+  if (scale > 1) { const s = Math.sqrt(scale); rx *= s; ry *= s; }
+
+  const num = rx*rx*ry*ry - rx*rx*py*py - ry*ry*px*px;
+  const den = rx*rx*py*py + ry*ry*px*px;
+  const coef = (largeArc === sweep ? -1 : 1) * Math.sqrt(Math.max(0, num / den));
+  const cxp = coef * (rx * py) / ry, cyp = coef * -(ry * px) / rx;
+  const cx = cos * cxp - sin * cyp + (x1 + x2) / 2;
+  const cy = sin * cxp + cos * cyp + (y1 + y2) / 2;
+
+  const angle = (ux, uy, vx, vy) => {
+    const dot = ux * vx + uy * vy;
+    const len = Math.hypot(ux, uy) * Math.hypot(vx, vy);
+    const a = Math.acos(Math.min(1, Math.max(-1, dot / (len || 1))));
+    return ux * vy - uy * vx < 0 ? -a : a;
+  };
+  const ux = (px - cxp) / rx, uy = (py - cyp) / ry;
+  const vx = (-px - cxp) / rx, vy = (-py - cyp) / ry;
+
+  const start = angle(1, 0, ux, uy);
+  let sweepAngle = angle(ux, uy, vx, vy);
+  if (!sweep && sweepAngle > 0) sweepAngle -= 2 * Math.PI;
+  if (sweep && sweepAngle < 0) sweepAngle += 2 * Math.PI;
+
+  const steps = Math.max(6, Math.ceil(Math.abs(sweepAngle) / (Math.PI / 12)));
+  for (let s = 1; s <= steps; s++) {
+    const t = start + (sweepAngle * s) / steps;
+    onPoint(cos * rx * Math.cos(t) - sin * ry * Math.sin(t) + cx,
+            sin * rx * Math.cos(t) + cos * ry * Math.sin(t) + cy);
+  }
+}
+
+/* Walk a path, reporting flattened points (for measuring) and raw segments (for
+ * rewriting). `kind` tells the rewriter how to read a segment's arguments:
+ * coordinate pairs, a lone x or y, or an arc's radii-flags-endpoint mixture. */
+function walk(d, onPoint, onSegment) {
+  const s = scanner(d);
+  let cmd = '', cx = 0, cy = 0, sx = 0, sy = 0;
+  let lastCubic = null, lastQuad = null;         // for the smooth (S/T) shorthands
+
+  const emit = (name, rel, abs, kind) => onSegment && onSegment(name, rel, abs, kind);
+
+  while (!s.done()) {
+    if (s.peekCommand()) cmd = s.takeCommand();
+    const rel = cmd === cmd.toLowerCase();
+    const ox = rel ? cx : 0, oy = rel ? cy : 0;
+    const upper = cmd.toUpperCase();
+
+    switch (upper) {
+      case 'M': case 'L': {
+        const x = ox + s.number(), y = oy + s.number();
+        if (upper === 'M') { sx = x; sy = y; }
+        emit(cmd, [x - ox, y - oy], [x, y], 'pairs');
+        onPoint(x, y);
+        cx = x; cy = y; lastCubic = lastQuad = null;
+        if (cmd === 'M') cmd = 'L'; else if (cmd === 'm') cmd = 'l';   // repeats are implicit linetos
+        break;
+      }
+      case 'H': {
+        const x = ox + s.number();
+        emit(cmd, [x - ox], [x], 'x');
+        onPoint(x, cy); cx = x; lastCubic = lastQuad = null;
+        break;
+      }
+      case 'V': {
+        const y = oy + s.number();
+        emit(cmd, [y - oy], [y], 'y');
+        onPoint(cx, y); cy = y; lastCubic = lastQuad = null;
+        break;
+      }
+      case 'C': case 'S': {
+        let x1, y1;
+        if (upper === 'C') { x1 = ox + s.number(); y1 = oy + s.number(); }
+        else { x1 = lastCubic ? 2 * cx - lastCubic[0] : cx;             // reflect the last control point
+               y1 = lastCubic ? 2 * cy - lastCubic[1] : cy; }
+        const x2 = ox + s.number(), y2 = oy + s.number(),
+              x = ox + s.number(), y = oy + s.number();
+
+        for (let t = 0.05; t <= 1.0001; t += 0.05) {
           const u = 1 - t;
           onPoint(u*u*u*cx + 3*u*u*t*x1 + 3*u*t*t*x2 + t*t*t*x,
                   u*u*u*cy + 3*u*u*t*y1 + 3*u*t*t*y2 + t*t*t*y);
         }
-        onSegment && onSegment(cmd, [x1-ox, y1-oy, x2-ox, y2-oy, x-ox, y-oy], [x1, y1, x2, y2, x, y]);
-        cx = x; cy = y;
+        if (upper === 'C') emit(cmd, [x1-ox, y1-oy, x2-ox, y2-oy, x-ox, y-oy], [x1, y1, x2, y2, x, y], 'pairs');
+        else emit(cmd, [x2-ox, y2-oy, x-ox, y-oy], [x2, y2, x, y], 'pairs');
+        cx = x; cy = y; lastCubic = [x2, y2]; lastQuad = null;
         break;
       }
-      case 'H': { const x = ox + num(); onSegment && onSegment(cmd, [x-ox], [x]); onPoint(x, cy); cx = x; break; }
-      case 'V': { const y = oy + num(); onSegment && onSegment(cmd, [y-oy], [y]); onPoint(cx, y); cy = y; break; }
-      case 'Z': { onSegment && onSegment('Z', [], []); cx = sx; cy = sy; break; }
+      case 'Q': case 'T': {
+        let x1, y1;
+        if (upper === 'Q') { x1 = ox + s.number(); y1 = oy + s.number(); }
+        else { x1 = lastQuad ? 2 * cx - lastQuad[0] : cx;
+               y1 = lastQuad ? 2 * cy - lastQuad[1] : cy; }
+        const x = ox + s.number(), y = oy + s.number();
+
+        for (let t = 0.05; t <= 1.0001; t += 0.05) {
+          const u = 1 - t;
+          onPoint(u*u*cx + 2*u*t*x1 + t*t*x, u*u*cy + 2*u*t*y1 + t*t*y);
+        }
+        if (upper === 'Q') emit(cmd, [x1-ox, y1-oy, x-ox, y-oy], [x1, y1, x, y], 'pairs');
+        else emit(cmd, [x-ox, y-oy], [x, y], 'pairs');
+        cx = x; cy = y; lastQuad = [x1, y1]; lastCubic = null;
+        break;
+      }
+      case 'A': {
+        const rx = s.number(), ry = s.number(), rotation = s.number();
+        const largeArc = s.flag(), sweep = s.flag();
+        const x = ox + s.number(), y = oy + s.number();
+
+        sampleArc(cx, cy, rx, ry, rotation, largeArc, sweep, x, y, onPoint);
+        emit(cmd, [rx, ry, rotation, largeArc, sweep, x - ox, y - oy],
+                  [rx, ry, rotation, largeArc, sweep, x, y], 'arc');
+        cx = x; cy = y; lastCubic = lastQuad = null;
+        break;
+      }
+      case 'Z': {
+        emit('Z', [], [], 'none');
+        cx = sx; cy = sy; lastCubic = lastQuad = null;
+        break;
+      }
       default:
-        throw new Error(
-          `path command "${cmd}" is not supported (only M L H V C Z are).\n` +
-          `Re-export the sheet with curves flattened to cubics and no arcs.`);
+        throw new Error(`path command "${cmd}" is not supported`);
     }
   }
 }
@@ -133,7 +271,13 @@ function readGroups(file) {
     console.error('warning: this sheet has transform attributes, which this tool ' +
                   'does not flatten. The output will be in the wrong place.');
   }
-  return [...svg.matchAll(/<g>([\s\S]*?)<\/g>/g)].map((m) => m[1]);
+  const groups = [...svg.matchAll(/<g>([\s\S]*?)<\/g>/g)].map((m) => m[1]);
+  if (groups.length) return groups;
+
+  // A file with no groups at all is one animal on its own -- which is how the
+  // safari set is packaged, one SVG per animal.
+  const body = svg.replace(/<\?xml[\s\S]*?\?>/g, '').replace(/<!--[\s\S]*?-->/g, '');
+  return /<path\b/.test(body) ? [body] : [];
 }
 
 const pathsOf = (group) =>
@@ -163,7 +307,156 @@ function classify(paths, minShare) {
     .sort((a, b) => b.share - a.share);          // biggest first == back to front
 
   const dropped = shapes.filter((s) => s !== silhouette && s.blank && s.share < minShare);
-  return { silhouette, regions, dropped, total };
+
+  /* How much of the animal a child can actually color, measured against the
+   * figure's own footprint rather than against the silhouette -- see the note on
+   * ribbon art in checkFillable(). */
+  const box = bbox(paths);
+  const footprint = (box.maxX - box.minX) * (box.maxY - box.minY);
+  const fillable = regions.reduce((n, r) => n + Math.abs(r.signed), 0) / (footprint || 1);
+
+  return { silhouette, regions, dropped, total, fillable };
+}
+
+/* Not all clip art is built as a silhouette with holes punched in it. The other
+ * common construction expands each drawn line into a filled ribbon, so the art
+ * is a pile of thin closed bands and the areas a child would color are the gaps
+ * between them -- gaps that belong to no path and so cannot be pulled out this
+ * way. Both kinds convert without complaint; only one of them is colorable
+ * afterwards, which is why this is checked rather than left to be noticed later.
+ *
+ * Known-good files here measure 0.51 to 0.62; known-bad ones 0.03 to 0.08. */
+const FILLABLE_FLOOR = 0.25;
+
+function checkFillable(split) {
+  if (split.fillable >= FILLABLE_FLOOR) return null;
+  return `only ${(100 * split.fillable).toFixed(0)}% of this animal came out colorable ` +
+         `(a usable page is 50% or more).\n` +
+         `Its outlines are almost certainly drawn as filled ribbons rather than as a\n` +
+         `silhouette with holes, and the areas between those ribbons belong to no path,\n` +
+         `so there is nothing here to turn into a region. Pass --force to convert it\n` +
+         `anyway and get a page that is mostly line art.`;
+}
+
+
+/* ------------------------------------------ does each region read as one area? */
+
+/* A blank shape in the source is not always one shape on the page. Some artists
+ * divide an area by drawing black shapes *over* it rather than by bounding it,
+ * and then a single hole in the geometry covers several features that look
+ * separate -- tap the hair and the horns, an ear and the nose all change color
+ * with it. Nothing in the path data says so; it only shows up once you draw the
+ * thing and look at what is left uncovered.
+ *
+ * So: rasterize what a child would actually see of each region (its shape, minus
+ * the line art, minus every region painted on top of it) and count the separate
+ * pieces. */
+
+function polygonsOf(d) {
+  const polys = [];
+  let current = null;
+  walk(d, (x, y) => { if (!current) { current = []; polys.push(current); } current.push([x, y]); },
+          (cmd) => { if (cmd === 'M' || cmd === 'm') current = null; });
+  return polys.filter((p) => p.length > 2);
+}
+
+/* Scanline fill, nonzero winding, across all the polygons handed in at once
+ * (which is how one path's subpaths fill: together, not separately). */
+function fillMask(polys, win, N, mask) {
+  const edges = [];
+  for (const pts of polys)
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      if (a[1] !== b[1]) edges.push([a[0], a[1], b[0], b[1]]);
+    }
+  for (let r = 0; r < N; r++) {
+    const y = win.y0 + ((r + 0.5) * win.h) / N;
+    const xs = [];
+    for (const [x1, y1, x2, y2] of edges)
+      if ((y1 <= y && y2 > y) || (y2 <= y && y1 > y))
+        xs.push([x1 + ((y - y1) / (y2 - y1)) * (x2 - x1), y2 > y1 ? 1 : -1]);
+    xs.sort((a, b) => a[0] - b[0]);
+    let winding = 0;
+    for (let i = 0; i < xs.length - 1; i++) {
+      winding += xs[i][1];
+      if (winding === 0) continue;
+      const from = Math.max(0, Math.ceil(((xs[i][0] - win.x0) / win.w) * N - 0.5));
+      const to = Math.min(N - 1, Math.floor(((xs[i + 1][0] - win.x0) / win.w) * N - 0.5));
+      for (let c = from; c <= to; c++) mask[r * N + c] = 1;
+    }
+  }
+}
+
+function piecesOf(mask, N) {
+  const seen = new Uint8Array(N * N), out = [];
+  for (let i = 0; i < N * N; i++) {
+    if (seen[i] || !mask[i]) continue;
+    const stack = [i];
+    seen[i] = 1;
+    let n = 0, r0 = N, r1 = 0, c0 = N, c1 = 0;
+    while (stack.length) {
+      const p = stack.pop();
+      n++;
+      const r = (p / N) | 0, c = p % N;
+      if (r < r0) r0 = r; if (r > r1) r1 = r;
+      if (c < c0) c0 = c; if (c > c1) c1 = c;
+      for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const rr = r + dr, cc = c + dc;
+        if (rr < 0 || cc < 0 || rr >= N || cc >= N) continue;
+        const q = rr * N + cc;
+        if (!seen[q] && mask[q]) { seen[q] = 1; stack.push(q); }
+      }
+    }
+    out.push({ n, r0, r1, c0, c1 });
+  }
+  return out.sort((a, b) => b.n - a.n);
+}
+
+const BLEED_SHARE = 0.10;        // small regions bleeding a little is not worth a complaint
+
+function bleedReport(paths, regions, N = 260) {
+  const b = bbox(paths);
+  const margin = Math.max(b.maxX - b.minX, b.maxY - b.minY) * 0.02;
+  const win = { x0: b.minX - margin, y0: b.minY - margin,
+                w: (b.maxX - b.minX) + 2 * margin, h: (b.maxY - b.minY) + 2 * margin };
+
+  const ink = new Uint8Array(N * N);
+  for (const d of paths) fillMask(polygonsOf(d), win, N, ink);
+
+  const masks = regions.map((r) => {
+    const m = new Uint8Array(N * N);
+    fillMask(polygonsOf(r.d), win, N, m);
+    return m;
+  });
+
+  return regions.map((r, i) => {
+    const visible = Uint8Array.from(masks[i]);
+    for (let k = i + 1; k < regions.length; k++)
+      for (let j = 0; j < visible.length; j++) if (masks[k][j]) visible[j] = 0;
+    for (let j = 0; j < visible.length; j++) if (ink[j]) visible[j] = 0;
+
+    /* A piece counts if a child could see and tap it. Measure that against the
+     * picture, not against the region it came from: a leaf is a couple of
+     * percent of a koala's head but perfectly visible, and dropping it hides
+     * exactly the bleed worth catching. Antialiasing slivers along an edge come
+     * out far smaller than this. */
+    const all = piecesOf(visible, N);
+    const solid = all.filter((p) => p.n >= N * N * 0.002);
+
+    // Two pieces that mirror across the animal's axis are usually a left/right
+    // pair -- both arms, both feet -- and coloring them together is what you
+    // want. Keep this tight: a loose match lets a tail pair up with a chest
+    // stripe and reports a page as clean when it is not.
+    const axis = N / 2, tol = N * 0.06;
+    const mirrored = solid.length === 2 &&
+      Math.abs(solid[0].r0 - solid[1].r0) < tol && Math.abs(solid[0].r1 - solid[1].r1) < tol &&
+      Math.abs((2 * axis - solid[0].c1) - solid[1].c0) < tol;
+
+    return { index: i, share: r.share, pieces: solid.length, mirrored,
+             // three or more scattered pieces in a big region is the unambiguous case
+             broken: solid.length >= 3 && r.share >= BLEED_SHARE,
+             odd: solid.length === 2 && r.share >= BLEED_SHARE && !mirrored };
+  });
 }
 
 
@@ -178,15 +471,27 @@ function fitter(paths, pad) {
   const y0 = (b.minY + b.maxY) / 2 - side / 2;
   const k = GRID / side;
 
+  const round = (v) => +v.toFixed(2);
+
   return (d) => {
     const out = [];
-    walk(d, () => {}, (cmd, relArgs, absArgs) => {
-      if (cmd === 'Z') { out.push('Z'); return; }
+    walk(d, () => {}, (cmd, relArgs, absArgs, kind) => {
+      if (kind === 'none') { out.push('Z'); return; }
       const rel = cmd === cmd.toLowerCase();
+      const args = rel ? relArgs : absArgs;
       out.push(cmd);
-      (rel ? relArgs : absArgs).forEach((v, i) => {
-        const isY = /[HV]/i.test(cmd) ? cmd.toUpperCase() === 'V' : i % 2 === 1;
-        out.push(+(rel ? v * k : (v - (isY ? y0 : x0)) * k).toFixed(2));
+
+      if (kind === 'arc') {
+        // radii scale with everything else; the rotation and the two flags are
+        // untouched by a uniform scale, and only the endpoint moves.
+        out.push(round(args[0] * k), round(args[1] * k), args[2], args[3], args[4],
+                 round(rel ? args[5] * k : (args[5] - x0) * k),
+                 round(rel ? args[6] * k : (args[6] - y0) * k));
+        return;
+      }
+      args.forEach((v, i) => {
+        const isY = kind === 'x' ? false : kind === 'y' ? true : i % 2 === 1;
+        out.push(round(rel ? v * k : (v - (isY ? y0 : x0)) * k));
       });
     });
 
@@ -229,6 +534,22 @@ function entryFor(paths, split, fit, id, name) {
          '    svg: `\n' + body.trimEnd() + '\n    `\n  }';
 }
 
+/* A painting page needs none of the shape analysis: the child paints on a canvas
+ * underneath and the art is only ever drawn on top, so every path goes in as
+ * ink and any drawing at all will do -- including the ribbon-outlined ones that
+ * have nothing fillable in them. */
+function paintEntryFor(paths, fit, id, name) {
+  const INK = '      <path class="ink" d="';
+  let body = '      <!-- outlines only: the painting goes on a canvas below them -->\n';
+  for (const d of paths) body += INK + indentTo(fit(d), INK.length) + '"/>\n';
+
+  const rule = '-'.repeat(Math.max(3, 72 - name.length)) + ' ' + name.toUpperCase();
+  return `  /* ${rule} */\n` +
+         `  {\n    id: '${id}',\n    name: '${name}',\n    mode: 'paint',\n` +
+         `    viewBox: '0 0 ${GRID} ${GRID}',\n` +
+         '    svg: `\n' + body.trimEnd() + '\n    `\n  }';
+}
+
 /* A standalone SVG for eyeballing: every colorable shape in its own color. */
 function previewFor(paths, split, fit) {
   const PALETTE = ['#e53935', '#fb8c00', '#fdd835', '#c0ca33', '#43a047', '#00897b',
@@ -259,6 +580,8 @@ function parseArgs(argv) {
     else if (a === '--preview') opts.preview = argv[++i];
     else if (a === '--min-share') opts.minShare = Number(argv[++i]);
     else if (a === '--pad') opts.pad = Number(argv[++i]);
+    else if (a === '--force') opts.force = true;
+    else if (a === '--paint') opts.paint = true;
     else if (a === '-h' || a === '--help') opts.help = true;
     else if (a.startsWith('-')) throw new Error('unknown option ' + a);
     else rest.push(a);
@@ -278,6 +601,9 @@ function usage() {
     '  --min-share N   smallest blank shape to keep, as a fraction of the',
     '                  silhouette (default 0.0008)',
     '  --pad N         margin around the animal in grid units (default 14)',
+    '  --force         convert even if almost nothing came out colorable',
+    '  --paint         make a brush-painting page instead: outlines only, no',
+    '                  fillable shapes, so any drawing works',
   ].join('\n'));
 }
 
@@ -296,15 +622,15 @@ function main() {
 
   if (opts.list || opts.group === undefined) {
     console.log(`${groups.length} groups in ${opts.file}\n`);
-    console.log('  group  paths  shapes  dropped  largest shape');
+    console.log('  group  paths  shapes  colorable');
     groups.forEach((g, i) => {
       const paths = pathsOf(g);
       let line;
       try {
         const split = classify(paths, opts.minShare);
-        const biggest = split.regions.length ? (100 * split.regions[0].share).toFixed(1) + '%' : '-';
+        const pct = (100 * split.fillable).toFixed(0) + '%';
         line = `${String(paths.length).padStart(7)}${String(split.regions.length).padStart(8)}` +
-               `${String(split.dropped.length).padStart(9)}${biggest.padStart(15)}`;
+               `${pct.padStart(11)}` + (checkFillable(split) ? '   <- ribbon art, not colorable' : '');
       } catch (e) {
         line = '  ' + e.message.split('\n')[0];
       }
@@ -318,13 +644,30 @@ function main() {
   if (!group) { console.error(`no group ${opts.group}; the sheet has 0..${groups.length - 1}`); process.exit(1); }
 
   const paths = pathsOf(group);
-  const split = classify(paths, opts.minShare);
   const fit = fitter(paths, opts.pad);
+
+  if (opts.paint) {
+    if (!opts.id || !opts.name) {
+      console.error('--id and --name are both needed to print an entry');
+      process.exit(2);
+    }
+    console.error(`painting page: ${paths.length} outline paths, nothing to classify`);
+    console.log(paintEntryFor(paths, fit, opts.id, opts.name));
+    return;
+  }
+
+  const split = classify(paths, opts.minShare);
 
   if (opts.preview) {
     fs.writeFileSync(opts.preview, previewFor(paths, split, fit));
-    console.error(`wrote ${opts.preview}: ${split.regions.length} colorable shapes` +
+    console.error(`wrote ${opts.preview}: ${split.regions.length} colorable shapes covering ` +
+                  `${(100 * split.fillable).toFixed(0)}% of the animal` +
                   (split.dropped.length ? `, ${split.dropped.length} too small to keep` : ''));
+    const warn = checkFillable(split);
+    if (warn) console.error(warn);
+    else for (const r of bleedReport(paths, split.regions).filter((r) => r.broken || r.odd))
+      console.error(`  shape ${r.index} (${(100 * r.share).toFixed(0)}% of the animal) paints in ` +
+                    `${r.pieces} separate places` + (r.mirrored ? ' (a left/right pair)' : ''));
     if (!opts.id) return;
   }
 
@@ -333,7 +676,27 @@ function main() {
     process.exit(2);
   }
 
-  console.error(`${split.regions.length} colorable shapes` +
+  const complaint = checkFillable(split);
+  if (complaint && !opts.force) { console.error(complaint); process.exit(1); }
+  if (complaint) console.error('forced: ' + complaint.split('\n')[0]);
+
+  const bleed = bleedReport(paths, split.regions);
+  for (const r of bleed.filter((r) => r.odd))
+    console.error(`note: shape ${r.index} (${(100 * r.share).toFixed(0)}% of the animal) paints in ` +
+                  `2 places that are not a left/right pair -- worth a look at the preview.`);
+  const broken = bleed.filter((r) => r.broken);
+  if (broken.length && !opts.force) {
+    console.error(broken.map((r) =>
+      `shape ${r.index} is ${(100 * r.share).toFixed(0)}% of the animal and paints in ` +
+      `${r.pieces} separate places.`).join('\n') + '\n' +
+      'Its divisions are drawn as black shapes laid over one blank area rather than\n' +
+      'bounding it, so one tap colors several features that look separate. There is no\n' +
+      'way to split it without redrawing. Pass --force to convert it anyway.');
+    process.exit(1);
+  }
+
+  console.error(`${split.regions.length} colorable shapes covering ` +
+                `${(100 * split.fillable).toFixed(0)}% of the animal` +
                 (split.dropped.length ? `, ${split.dropped.length} dropped as too small` : ''));
   console.log(entryFor(paths, split, fit, opts.id, opts.name));
 }
@@ -347,4 +710,5 @@ if (require.main === module) {
   }
 }
 
-module.exports = { walk, bbox, signedArea, subpathsOf, readGroups, pathsOf, classify, fitter, entryFor };
+module.exports = { walk, bbox, signedArea, subpathsOf, readGroups, pathsOf, classify,
+                   checkFillable, bleedReport, fitter, entryFor, paintEntryFor };

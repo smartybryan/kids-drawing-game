@@ -137,6 +137,7 @@ body {
 }
 
 .canvas {
+  position: relative;
   background: var(--paper);
   border: 5px solid var(--ink);
   border-radius: var(--radius);
@@ -147,17 +148,33 @@ body {
   touch-action: none;            /* pinch/drag belong to us, not the browser */
 }
 
-.canvas svg {
-  width: 100%;
-  height: 100%;
-  display: block;
+/* The stage is what zoom and pan move. On a painting page it holds two layers --
+ * the child's brushwork on a <canvas>, and the drawn outlines above it -- so the
+ * paint can never cover a line no matter where it goes. Transforming the stage
+ * rather than each layer keeps the two locked together. */
+.stage {
+  position: absolute;
+  inset: 0;
   transform-origin: 0 0;         /* app.js does the zoom/pan math in this corner space */
 }
 
+.stage svg,
+.stage .paint-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.stage svg { pointer-events: none; }          /* re-enabled per region on fill pages */
+.fill-mode .stage svg { pointer-events: auto; }
+
 /* button-driven zoom glides; dragging and pinching must not lag behind the
  * finger, so app.js only adds .smooth for the button/keyboard path */
-.canvas svg.smooth { transition: transform .18s ease; }
+.stage.smooth { transition: transform .18s ease; }
 
+.canvas.paint-mode { cursor: crosshair; }
 .canvas.zoomed { cursor: grab; }
 .canvas.panning { cursor: grabbing; }
 
@@ -241,6 +258,66 @@ body {
   transform-origin: center;
 }
 
+/* ----------------------------------------------------------------- brushes */
+
+.brushes {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.brush {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  border: 4px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  padding: 0;
+}
+
+.brush span {                    /* the dot that shows how fat the brush is */
+  display: block;
+  background: var(--ink);
+  border-radius: 50%;
+}
+
+.brush.selected {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 5px var(--paper), 0 0 0 9px var(--ink);
+}
+
+.card-art {
+  display: block;
+  position: relative;
+  width: 100%;
+}
+
+.card-art canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.card-art svg {                  /* outlines stay above the brushwork */
+  position: relative;
+  z-index: 1;
+}
+
+.card-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 22px;
+  line-height: 1;
+}
+
 /* ---------------------------------------------------------------- palette */
 
 .palette-bar {
@@ -293,6 +370,8 @@ body {
 @media (max-width: 560px) {
   .swatch { width: 46px; height: 46px; }
   .zoom-btn { width: 46px; height: 46px; font-size: 22px; }
+  .brush { width: 44px; height: 44px; }
+  .brushes { gap: 9px; margin-bottom: 7px; }
   .zoom-level { font-size: 15px; }
   .zoom-controls { right: 8px; bottom: 8px; gap: 6px; }
   .palette { gap: 9px; }
