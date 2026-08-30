@@ -26,7 +26,16 @@
   </header>
 
   <div class="canvas-wrap">
-    <div id="canvas" class="canvas"></div>
+    <div class="canvas-frame">
+      <div id="canvas" class="canvas"></div>
+
+      <div class="zoom-controls">
+        <button id="btn-zoom-in" class="zoom-btn" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="btn-zoom-reset" class="zoom-btn zoom-level" title="Fit the whole picture"
+                aria-label="Fit the whole picture">1&#215;</button>
+        <button id="btn-zoom-out" class="zoom-btn" title="Zoom out" aria-label="Zoom out">&#8722;</button>
+      </div>
+    </div>
   </div>
 
   <footer class="palette-bar">

@@ -128,18 +128,70 @@ body {
   padding: 0 16px 8px;
 }
 
+/* the frame is only there to hang the zoom buttons off the canvas corner */
+.canvas-frame {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  max-width: 100%;
+}
+
 .canvas {
   background: var(--paper);
   border: 5px solid var(--ink);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   height: 100%;
-  aspect-ratio: 1 / 1;
-  max-width: 100%;
+  width: 100%;
   overflow: hidden;
+  touch-action: none;            /* pinch/drag belong to us, not the browser */
 }
 
-.canvas svg { width: 100%; height: 100%; display: block; }
+.canvas svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  transform-origin: 0 0;         /* app.js does the zoom/pan math in this corner space */
+}
+
+/* button-driven zoom glides; dragging and pinching must not lag behind the
+ * finger, so app.js only adds .smooth for the button/keyboard path */
+.canvas svg.smooth { transition: transform .18s ease; }
+
+.canvas.zoomed { cursor: grab; }
+.canvas.panning { cursor: grabbing; }
+
+/* ------------------------------------------------------------ zoom buttons */
+
+.zoom-controls {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zoom-btn {
+  font: inherit;
+  font-size: 26px;
+  font-weight: bold;
+  line-height: 1;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  border: 4px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.zoom-btn:active { transform: translateY(4px); box-shadow: none; }
+.zoom-btn:disabled { opacity: .35; cursor: default; transform: none; }
+
+.zoom-level { font-size: 17px; }
 
 /* ------------------------------------------------------------- the drawing */
 
@@ -161,6 +213,12 @@ body {
 .backdrop:focus-visible { stroke: var(--ink); stroke-width: 10; }
 
 .ink  { fill: var(--ink); stroke: none; pointer-events: none; }
+
+/* The blank sheet under a picture whose outlines are part of the art (see the
+ * lion). It is not colorable, but it is NOT pointer-events:none either -- it is
+ * what catches a tap that lands on an outline, so that tap quietly does nothing
+ * instead of falling through and painting the whole background. */
+.paper { fill: #ffffff; stroke: none; }
 
 .line {
   fill: none;
@@ -234,6 +292,9 @@ body {
 
 @media (max-width: 560px) {
   .swatch { width: 46px; height: 46px; }
+  .zoom-btn { width: 46px; height: 46px; font-size: 22px; }
+  .zoom-level { font-size: 15px; }
+  .zoom-controls { right: 8px; bottom: 8px; gap: 6px; }
   .palette { gap: 9px; }
   .tool-btn { font-size: 16px; padding: 10px 12px; min-height: 46px; }
   .drawing-name { display: none; }
