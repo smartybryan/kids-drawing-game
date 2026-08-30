@@ -1,6 +1,10 @@
 /* ---------------------------------------------------------------------------
  * app.js  --  picker + coloring logic.
  *
+ * A page works one of two ways, chosen by `mode` on the drawing entry. The
+ * default is flood fill: tap a shape, it takes the current color. A page marked
+ * mode: 'paint' instead gets a brush -- see the painting section below.
+ *
  * Fills are written to element.style.fill (an inline style) rather than the
  * fill attribute, because the .region CSS rule would otherwise win over a
  * presentation attribute and every shape would stay white.
@@ -21,6 +25,12 @@ const state = {
   color: PALETTE[0], // currently selected crayon
   undo: []           // [{ index, previousColor }, ...]
 };
+
+/* Brush widths in drawing units, so they look the same on every picture and on
+ * every screen. The pictures are 400 units across. */
+const BRUSHES = [7, 15, 28];
+
+const isPaintPage = (drawing) => Boolean(drawing) && drawing.mode === 'paint';
 
 const $ = (id) => document.getElementById(id);
 
@@ -44,9 +54,12 @@ function setColor(el, color) {
  * so it sits behind the animal. */
 function svgMarkup(drawing, extraAttrs = '') {
   const [minX, minY, width, height] = drawing.viewBox.trim().split(/\s+/).map(Number);
+  // A painting page gets no backdrop: it sits above the paint layer, so an
+  // opaque rectangle there would hide every brush stroke.
+  const backdrop = isPaintPage(drawing) ? '' :
+    `<rect class="region backdrop" x="${minX}" y="${minY}" width="${width}" height="${height}"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${drawing.viewBox}" ${extraAttrs}>
-            <rect class="region backdrop" x="${minX}" y="${minY}"
-                  width="${width}" height="${height}"/>
+            ${backdrop}
             ${drawing.svg}
           </svg>`;
 }
@@ -105,15 +118,27 @@ function buildGallery() {
     const card = document.createElement('button');
     card.className = 'card';
     card.type = 'button';
-    card.innerHTML = svgMarkup(drawing) + `<span class="card-name">${drawing.name}</span>`;
 
-    // Thumbnails show any colors already saved for that page.
-    const saved = loadColors(drawing.id);
-    regionsOf(card).forEach((el, i) => {
-      if (saved[i]) el.style.fill = saved[i];
-      el.style.pointerEvents = 'none';
-      el.style.cursor = 'inherit';
-    });
+    const brush = isPaintPage(drawing);
+    card.innerHTML =
+      `<span class="card-art">${brush ? '<canvas width="300" height="300"></canvas>' : ''}` +
+      `${svgMarkup(drawing)}${brush ? '<span class="card-badge">&#128396;</span>' : ''}</span>` +
+      `<span class="card-name">${drawing.name}</span>`;
+
+    // Thumbnails show the work already saved for that page, either way it was made.
+    if (brush) {
+      const [, , vbWidth] = drawing.viewBox.trim().split(/\s+/).map(Number);
+      const thumb = card.querySelector('canvas');
+      replayStrokes(thumb.getContext('2d'), loadPainting(drawing.id),
+                    thumb.width / vbWidth, drawing.viewBox);
+    } else {
+      const saved = loadColors(drawing.id);
+      regionsOf(card).forEach((el, i) => {
+        if (saved[i]) el.style.fill = saved[i];
+        el.style.pointerEvents = 'none';
+        el.style.cursor = 'inherit';
+      });
+    }
 
     card.addEventListener('click', () => openDrawing(drawing));
     gallery.appendChild(card);
@@ -150,30 +175,49 @@ function buildPalette() {
 function openDrawing(drawing) {
   state.drawing = drawing;
   state.undo = [];
+  state.regions = [];
+  painting.strokes = [];
+  painting.active = null;
+  painting.layer = null;
+  painting.ctx = null;
 
-  $('canvas').innerHTML = svgMarkup(drawing);
+  const brush = isPaintPage(drawing);
+  const canvas = $('canvas');
+  canvas.classList.toggle('paint-mode', brush);
+  canvas.classList.toggle('fill-mode', !brush);
+  canvas.innerHTML = `<div class="stage">${brush ? '<canvas class="paint-layer"></canvas>' : ''}` +
+                     `${svgMarkup(drawing)}</div>`;
   $('drawing-name').textContent = drawing.name;
-  resetView();
+  $('brushes').classList.toggle('hidden', !brush);
 
-  state.regions = regionsOf($('canvas'));
-  const saved = loadColors(drawing.id);
+  if (brush) {
+    painting.layer = canvas.querySelector('.paint-layer');
+    painting.ctx = painting.layer.getContext('2d');
+    painting.strokes = loadPainting(drawing.id);
+  } else {
+    state.regions = regionsOf(canvas);
+    const saved = loadColors(drawing.id);
 
-  state.regions.forEach((el, index) => {
-    setColor(el, saved[index] || UNPAINTED);
-    el.setAttribute('tabindex', '0');
-    el.setAttribute('role', 'button');
-    el.addEventListener('click', () => paint(el, index));
-    el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        paint(el, index);
-      }
+    state.regions.forEach((el, index) => {
+      setColor(el, saved[index] || UNPAINTED);
+      el.setAttribute('tabindex', '0');
+      el.setAttribute('role', 'button');
+      el.addEventListener('click', () => paint(el, index));
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          paint(el, index);
+        }
+      });
     });
-  });
+  }
 
   refreshUndoButton();
   $('picker-screen').classList.add('hidden');
   $('color-screen').classList.remove('hidden');
+
+  resetView();                 // needs the screen visible to measure the canvas
+  if (brush) refreshPaintLayer();
 }
 
 function paint(el, index) {
@@ -194,6 +238,7 @@ function paint(el, index) {
 }
 
 function undo() {
+  if (isPaintPage(state.drawing)) return undoStroke();
   const step = state.undo.pop();
   if (!step) return;
   setColor(state.regions[step.index], step.previousColor);
@@ -202,6 +247,7 @@ function undo() {
 }
 
 function clearDrawing() {
+  if (isPaintPage(state.drawing)) return clearPainting();
   state.regions.forEach((el, index) => {
     if (getColor(el) !== UNPAINTED) {
       state.undo.push({ index, previousColor: getColor(el) });
@@ -213,14 +259,211 @@ function clearDrawing() {
 }
 
 function refreshUndoButton() {
-  $('btn-undo').disabled = state.undo.length === 0;
+  $('btn-undo').disabled = isPaintPage(state.drawing)
+    ? painting.strokes.length === 0
+    : state.undo.length === 0;
 }
 
 function goBack() {
-  saveColors();
+  if (isPaintPage(state.drawing)) savePainting(); else saveColors();
   buildGallery();                      // refresh thumbnails with the new colors
   $('color-screen').classList.add('hidden');
   $('picker-screen').classList.remove('hidden');
+}
+
+
+/* -------------------------------------------------------------- painting
+ *
+ * A painting page keeps the child's work as a list of strokes rather than as
+ * pixels: each stroke is a color, a width, and a run of points in the picture's
+ * own 0..400 coordinate space. Everything falls out of that one decision --
+ * undo is dropping the last stroke and drawing the rest again, saving is a
+ * short bit of JSON, and the same strokes redraw crisply at any zoom, on any
+ * screen, because nothing was ever committed to a particular pixel grid.
+ *
+ * The strokes go on a <canvas> UNDER the outlines, so paint can wander outside
+ * a line but can never cover one. No clipping, no masking, no hit testing.
+ */
+
+const painting = {
+  strokes: [],      // [{ color, width, points: [x, y, x, y, ...] }]
+  active: null,     // the stroke being drawn right now
+  brush: 1,         // index into BRUSHES
+  layer: null,      // the <canvas>
+  ctx: null
+};
+
+function paintKey(id) {
+  return `kids-drawing-game:paint:${id}`;
+}
+
+function savePainting() {
+  if (!state.drawing) return;
+  try {
+    localStorage.setItem(paintKey(state.drawing.id), JSON.stringify(painting.strokes));
+  } catch (e) {
+    /* out of room or private browsing -- painting still works, it just won't keep */
+  }
+}
+
+function loadPainting(id) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(paintKey(id)));
+    return Array.isArray(saved) ? saved : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/* Where a stroke lands in the picture's own coordinates: undo the zoom
+ * transform, then the fit of the picture into the canvas box. */
+function toDrawing(clientX, clientY) {
+  const stage = toStage(clientX, clientY);
+  const box = stageSize();
+  const [minX, minY, width, height] = state.drawing.viewBox.trim().split(/\s+/).map(Number);
+  return {
+    x: minX + ((stage.x - view.x) / view.scale / (box.width || 1)) * width,
+    y: minY + ((stage.y - view.y) / view.scale / (box.height || 1)) * height
+  };
+}
+
+/* Draw the strokes onto any context, given how many device pixels one drawing
+ * unit is worth. Used for the page itself, the gallery thumbnails and the PNG. */
+function replayStrokes(ctx, strokes, scale, viewBox) {
+  const [minX, minY] = viewBox.trim().split(/\s+/).map(Number);
+  ctx.save();
+  ctx.setTransform(scale, 0, 0, scale, -minX * scale, -minY * scale);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  for (const stroke of strokes) {
+    const points = stroke.points;
+    if (!points || points.length < 2) continue;
+    ctx.strokeStyle = stroke.color;
+    ctx.fillStyle = stroke.color;
+    ctx.lineWidth = stroke.width;
+
+    if (points.length === 2) {                 // a tap: a single round dab
+      ctx.beginPath();
+      ctx.arc(points[0], points[1], stroke.width / 2, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    ctx.beginPath();
+    ctx.moveTo(points[0], points[1]);
+    for (let i = 2; i < points.length; i += 2) ctx.lineTo(points[i], points[i + 1]);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* Size the canvas to the zoom it is being viewed at, so brushwork stays sharp
+ * when a child zooms in, then draw everything again. */
+function refreshPaintLayer() {
+  if (!painting.layer) return;
+  const box = stageSize();
+  if (!box.width || !box.height) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const sharpness = Math.min(4, Math.max(1, view.scale));
+  const width = Math.round(box.width * dpr * sharpness);
+  const height = Math.round(box.height * dpr * sharpness);
+
+  if (painting.layer.width !== width || painting.layer.height !== height) {
+    painting.layer.width = width;
+    painting.layer.height = height;
+  }
+  const [, , vbWidth] = state.drawing.viewBox.trim().split(/\s+/).map(Number);
+  painting.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  painting.ctx.clearRect(0, 0, width, height);
+  replayStrokes(painting.ctx, painting.strokes, width / vbWidth, state.drawing.viewBox);
+}
+
+function beginStroke(clientX, clientY) {
+  const at = toDrawing(clientX, clientY);
+  painting.active = {
+    color: state.color,
+    width: BRUSHES[painting.brush],
+    points: [round1(at.x), round1(at.y)]
+  };
+  painting.strokes.push(painting.active);
+  drawActiveTail();
+  refreshUndoButton();
+}
+
+function extendStroke(clientX, clientY) {
+  if (!painting.active) return;
+  const at = toDrawing(clientX, clientY);
+  const points = painting.active.points;
+  const dx = at.x - points[points.length - 2], dy = at.y - points[points.length - 1];
+  if (Math.hypot(dx, dy) < 1.2) return;        // skip points too close to matter
+  points.push(round1(at.x), round1(at.y));
+  drawActiveTail();
+}
+
+function endStroke() {
+  if (!painting.active) return;
+  painting.active = null;
+  savePainting();
+}
+
+/* Draw only the newest segment, so a long stroke does not get slower as it
+ * grows. The full replay is for undo, zoom and resize. */
+function drawActiveTail() {
+  const stroke = painting.active;
+  if (!painting.ctx || !stroke) return;
+  const points = stroke.points;
+  const [, , vbWidth] = state.drawing.viewBox.trim().split(/\s+/).map(Number);
+  const tail = points.length >= 4 ? points.slice(-4) : points.slice(-2);
+  replayStrokes(painting.ctx, [{ color: stroke.color, width: stroke.width, points: tail }],
+                painting.layer.width / vbWidth, state.drawing.viewBox);
+}
+
+const round1 = (v) => Math.round(v * 10) / 10;
+
+function undoStroke() {
+  if (!painting.strokes.length) return;
+  painting.strokes.pop();
+  refreshPaintLayer();
+  refreshUndoButton();
+  savePainting();
+}
+
+function clearPainting() {
+  if (!painting.strokes.length) return;
+  painting.strokes = [];
+  refreshPaintLayer();
+  refreshUndoButton();
+  savePainting();
+}
+
+
+/* ----------------------------------------------------------- brush picker */
+
+function buildBrushes() {
+  const bar = $('brushes');
+  bar.innerHTML = '';
+
+  BRUSHES.forEach((width, index) => {
+    const button = document.createElement('button');
+    button.className = 'brush' + (index === painting.brush ? ' selected' : '');
+    button.type = 'button';
+    button.setAttribute('aria-label', ['Thin brush', 'Medium brush', 'Thick brush'][index] || 'Brush');
+
+    const dot = document.createElement('span');
+    const size = 6 + index * 8;
+    dot.style.width = `${size}px`;
+    dot.style.height = `${size}px`;
+    button.appendChild(dot);
+
+    button.addEventListener('click', () => {
+      painting.brush = index;
+      bar.querySelectorAll('.brush').forEach((b) => b.classList.remove('selected'));
+      button.classList.add('selected');
+    });
+
+    bar.appendChild(button);
+  });
 }
 
 
@@ -285,11 +528,12 @@ function applyView({ smooth = false } = {}) {
   clampView();
 
   const canvas = $('canvas');
-  const svg = canvas.querySelector('svg');
-  if (svg) {
-    svg.classList.toggle('smooth', smooth);
-    svg.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+  const stage = canvas.querySelector('.stage');
+  if (stage) {
+    stage.classList.toggle('smooth', smooth);
+    stage.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
   }
+  schedulePaintRefresh();
 
   canvas.classList.toggle('zoomed', view.scale > 1);
 
@@ -297,6 +541,15 @@ function applyView({ smooth = false } = {}) {
   $('btn-zoom-out').disabled = view.scale <= MIN_ZOOM + 0.001;
   $('btn-zoom-reset').disabled = view.scale <= MIN_ZOOM + 0.001;
   $('btn-zoom-reset').textContent = `${Math.round(view.scale * 10) / 10}×`;
+}
+
+/* Re-rendering brushwork on every frame of a pinch would stutter, and it is only
+ * the final zoom that has to look sharp, so coalesce to one redraw. */
+let paintRefreshTimer = null;
+function schedulePaintRefresh() {
+  if (!painting.layer) return;
+  clearTimeout(paintRefreshTimer);
+  paintRefreshTimer = setTimeout(refreshPaintLayer, 120);
 }
 
 /* Zoom by `factor`, holding the stage point under (x, y) still. */
@@ -354,8 +607,18 @@ function onPointerDown(e) {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
   if (pointers.size === 2) {
+    endStroke();                 // a second finger means pinch, not paint
     beginPinch();
-  } else if (pointers.size === 1 && view.scale > 1) {
+    return;
+  }
+  if (pointers.size !== 1) return;
+
+  // On a painting page one finger always paints, so panning moves to two
+  // fingers; on a fill page a drag still pans once the picture is zoomed in.
+  if (isPaintPage(state.drawing)) {
+    try { $('canvas').setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+    beginStroke(e.clientX, e.clientY);
+  } else if (view.scale > 1) {
     pan = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
   }
 }
@@ -363,6 +626,11 @@ function onPointerDown(e) {
 function onPointerMove(e) {
   if (!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (painting.active && pointers.size === 1) {
+    extendStroke(e.clientX, e.clientY);
+    return;
+  }
 
   if (pinch && pointers.size >= 2) {
     const distance = spread();
@@ -403,6 +671,7 @@ function onPointerMove(e) {
 
 function onPointerUp(e) {
   pointers.delete(e.pointerId);
+  endStroke();
 
   if (pinch && pointers.size < 2) {
     pinch = null;
@@ -435,7 +704,7 @@ function onWheel(e) {
 
 function savePng() {
   const svg = $('canvas').querySelector('svg').cloneNode(true);
-  svg.style.transform = '';            // save the whole page, not the zoomed view
+  svg.removeAttribute('style');        // save the whole page, not the zoomed view
   svg.classList.remove('smooth');
 
   // Inline the styles the CSS file was providing, so the standalone copy of
@@ -475,6 +744,12 @@ function savePng() {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, size, size);
+
+    // Same order as on screen: paint first, outlines over the top of it.
+    if (isPaintPage(state.drawing)) {
+      const [, , vbWidth] = state.drawing.viewBox.trim().split(/\s+/).map(Number);
+      replayStrokes(ctx, painting.strokes, size / vbWidth, state.drawing.viewBox);
+    }
     ctx.drawImage(image, 0, 0, size, size);
 
     try {
@@ -511,7 +786,7 @@ canvasEl.addEventListener('click', (e) => {
   e.preventDefault();
 }, true);
 
-window.addEventListener('resize', () => applyView());
+window.addEventListener('resize', () => { applyView(); schedulePaintRefresh(); });
 
 $('btn-zoom-in').addEventListener('click', () => zoomFromCenter(ZOOM_STEP));
 $('btn-zoom-out').addEventListener('click', () => zoomFromCenter(1 / ZOOM_STEP));
@@ -552,4 +827,5 @@ document.addEventListener('keydown', (e) => {
 
 buildGallery();
 buildPalette();
+buildBrushes();
 applyView();          // starts the zoom buttons in their 1x state
