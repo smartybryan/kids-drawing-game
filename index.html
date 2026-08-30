@@ -29,6 +29,13 @@
     <div class="canvas-frame">
       <div id="canvas" class="canvas"></div>
 
+      <div id="pan-pad" class="pan-pad hidden">
+        <button class="pan-btn pan-up"    data-pan="up"    aria-label="Move up">&#9650;</button>
+        <button class="pan-btn pan-left"  data-pan="left"  aria-label="Move left">&#9664;</button>
+        <button class="pan-btn pan-right" data-pan="right" aria-label="Move right">&#9654;</button>
+        <button class="pan-btn pan-down"  data-pan="down"  aria-label="Move down">&#9660;</button>
+      </div>
+
       <div class="zoom-controls">
         <button id="btn-zoom-in" class="zoom-btn" title="Zoom in" aria-label="Zoom in">+</button>
         <button id="btn-zoom-reset" class="zoom-btn zoom-level" title="Fit the whole picture"
@@ -41,6 +48,8 @@
   <footer class="palette-bar">
     <div id="brushes" class="brushes hidden"></div>
     <div id="palette" class="palette"></div>
+    <button id="btn-color" class="color-button" title="Pick a color" aria-label="Pick a color"
+            aria-expanded="false"></button>
   </footer>
 </section>
 

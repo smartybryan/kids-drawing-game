@@ -178,6 +178,48 @@ body {
 .canvas.zoomed { cursor: grab; }
 .canvas.panning { cursor: grabbing; }
 
+/* --------------------------------------------------------------- pan buttons
+ *
+ * A painting page gives one-finger drags to the brush, so dragging cannot also
+ * pan -- and with a mouse there is no second finger to pan with at all. Hence a
+ * pad: held down it pans continuously, and unlike a hand/pan mode it can never
+ * be confused with painting, because it is a different control rather than a
+ * different meaning for the same one. It appears only when there is somewhere to
+ * pan to. */
+
+.pan-pad {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  display: grid;
+  grid-template-areas: ". up ." "left . right" ". down .";
+  gap: 4px;
+}
+
+.pan-up    { grid-area: up; }
+.pan-left  { grid-area: left; }
+.pan-right { grid-area: right; }
+.pan-down  { grid-area: down; }
+
+.pan-btn {
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  border: 4px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  touch-action: none;            /* holding one must not scroll or select */
+  user-select: none;
+}
+
+.pan-btn:active { transform: translateY(3px); box-shadow: none; }
+
 /* ------------------------------------------------------------ zoom buttons */
 
 .zoom-controls {
@@ -321,6 +363,7 @@ body {
 /* ---------------------------------------------------------------- palette */
 
 .palette-bar {
+  position: relative;            /* the collapsed palette hangs off this */
   padding: 8px 16px 16px;
   flex: 0 0 auto;
 }
@@ -350,6 +393,50 @@ body {
   box-shadow: 0 0 0 5px var(--paper), 0 0 0 9px var(--ink);
 }
 
+/* ------------------------------------------------- the collapsed color picker
+ *
+ * On a small screen sixteen swatches plus the brushes eat a third of the height,
+ * and most of that is idle. There, the palette collapses to one button showing
+ * the color in use, and opens as a sheet ON TOP of the picture -- never by
+ * growing the bar, because resizing the canvas would mean re-rendering a
+ * painting page's strokes every time it opened. A roomy screen keeps the
+ * palette out where it is, since hiding it there costs a tap and buys nothing.
+ */
+
+.color-button {
+  display: none;                 /* only on small screens; see the media query */
+  width: 62px;
+  height: 62px;
+  margin: 0 auto;
+  padding: 0;
+  border: 4px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: var(--shadow), inset 0 0 0 4px var(--paper);
+  cursor: pointer;
+}
+
+.color-button:active { transform: translateY(4px); box-shadow: inset 0 0 0 4px var(--paper); }
+
+@media (max-width: 720px), (max-height: 620px) {
+  .color-button { display: block; }
+
+  .palette {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: calc(100% - 8px);
+    z-index: 5;
+    display: none;
+    padding: 14px 12px;
+    background: var(--paper);
+    border: 4px solid var(--ink);
+    border-radius: var(--radius);
+    box-shadow: 0 -6px 0 rgba(0, 0, 0, .12);
+  }
+
+  .palette.open { display: flex; }
+}
+
 /* ------------------------------------------------------------------ toast */
 
 .toast {
@@ -370,6 +457,8 @@ body {
 @media (max-width: 560px) {
   .swatch { width: 46px; height: 46px; }
   .zoom-btn { width: 46px; height: 46px; font-size: 22px; }
+  .pan-btn { width: 40px; height: 40px; font-size: 14px; }
+  .pan-pad { left: 8px; bottom: 8px; }
   .brush { width: 44px; height: 44px; }
   .brushes { gap: 9px; margin-bottom: 7px; }
   .zoom-level { font-size: 15px; }

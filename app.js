@@ -163,10 +163,34 @@ function buildPalette() {
       state.color = color;
       palette.querySelectorAll('.swatch').forEach((s) => s.classList.remove('selected'));
       swatch.classList.add('selected');
+      showCurrentColor();
+      closePalette();               // a choice made is a sheet done with
     });
 
     palette.appendChild(swatch);
   });
+
+  showCurrentColor();
+}
+
+/* The collapsed picker doubles as the indicator of what is in use, which is the
+ * job the open palette was doing by showing which swatch is selected. */
+function showCurrentColor() {
+  $('btn-color').style.background = state.color;
+}
+
+function openPalette() {
+  $('palette').classList.add('open');
+  $('btn-color').setAttribute('aria-expanded', 'true');
+}
+
+function closePalette() {
+  $('palette').classList.remove('open');
+  $('btn-color').setAttribute('aria-expanded', 'false');
+}
+
+function togglePalette() {
+  if ($('palette').classList.contains('open')) closePalette(); else openPalette();
 }
 
 
@@ -265,6 +289,7 @@ function refreshUndoButton() {
 }
 
 function goBack() {
+  closePalette();
   if (isPaintPage(state.drawing)) savePainting(); else saveColors();
   buildGallery();                      // refresh thumbnails with the new colors
   $('color-screen').classList.add('hidden');
@@ -379,11 +404,19 @@ function refreshPaintLayer() {
   replayStrokes(painting.ctx, painting.strokes, width / vbWidth, state.drawing.viewBox);
 }
 
+/* A two-finger gesture always starts as one finger down, so the first finger of
+ * a pinch has already begun painting by the time the second arrives. Within this
+ * long, the mark is taken back rather than kept: the child was reaching to pan,
+ * not to paint. A stroke that has been going longer than this was deliberate, so
+ * resting a second finger on the screen mid-stroke does not destroy it. */
+const STROKE_GRACE_MS = 300;
+
 function beginStroke(clientX, clientY) {
   const at = toDrawing(clientX, clientY);
   painting.active = {
     color: state.color,
     width: BRUSHES[painting.brush],
+    startedAt: Date.now(),
     points: [round1(at.x), round1(at.y)]
   };
   painting.strokes.push(painting.active);
@@ -403,7 +436,24 @@ function extendStroke(clientX, clientY) {
 
 function endStroke() {
   if (!painting.active) return;
+  delete painting.active.startedAt;      // not worth storing
   painting.active = null;
+  savePainting();
+}
+
+/* Called when a second finger lands: undo the stroke if it was only the opening
+ * of a pinch, otherwise leave the finished stroke alone. */
+function abandonStrokeForGesture() {
+  const stroke = painting.active;
+  if (!stroke) return;
+
+  if (Date.now() - stroke.startedAt >= STROKE_GRACE_MS) return endStroke();
+
+  const at = painting.strokes.indexOf(stroke);
+  if (at !== -1) painting.strokes.splice(at, 1);
+  painting.active = null;
+  refreshPaintLayer();
+  refreshUndoButton();
   savePainting();
 }
 
@@ -536,6 +586,8 @@ function applyView({ smooth = false } = {}) {
   schedulePaintRefresh();
 
   canvas.classList.toggle('zoomed', view.scale > 1);
+  $('pan-pad').classList.toggle('hidden', view.scale <= 1);
+  if (view.scale <= 1) stopPanning();
 
   $('btn-zoom-in').disabled = view.scale >= MAX_ZOOM - 0.001;
   $('btn-zoom-out').disabled = view.scale <= MIN_ZOOM + 0.001;
@@ -584,6 +636,39 @@ function movePan(dx, dy) {
 }
 
 
+/* ------------------------------------------------------------- the pan pad */
+
+const PAN_DIRECTIONS = {              // which way the picture slides under the window
+  up:    [0, 1],
+  down:  [0, -1],
+  left:  [1, 0],
+  right: [-1, 0]
+};
+const PAN_SPEED = 9;                  // stage pixels per frame while held
+
+let panHeld = null;
+let panFrame = null;
+
+function startPanning(direction) {
+  const step = PAN_DIRECTIONS[direction];
+  if (!step) return;
+  panHeld = step;
+  if (panFrame !== null) return;
+
+  const tick = () => {
+    if (!panHeld) { panFrame = null; return; }
+    movePan(panHeld[0] * PAN_SPEED, panHeld[1] * PAN_SPEED);
+    panFrame = requestAnimationFrame(tick);
+  };
+  panFrame = requestAnimationFrame(tick);
+}
+
+function stopPanning() {
+  panHeld = null;
+  if (panFrame !== null) { cancelAnimationFrame(panFrame); panFrame = null; }
+}
+
+
 /* --------------------------------------------------------- pointer gestures */
 
 function midpoint() {
@@ -607,7 +692,7 @@ function onPointerDown(e) {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
   if (pointers.size === 2) {
-    endStroke();                 // a second finger means pinch, not paint
+    abandonStrokeForGesture();   // a second finger means pinch, not paint
     beginPinch();
     return;
   }
@@ -788,6 +873,31 @@ canvasEl.addEventListener('click', (e) => {
 
 window.addEventListener('resize', () => { applyView(); schedulePaintRefresh(); });
 
+$('pan-pad').querySelectorAll('.pan-btn').forEach((button) => {
+  const direction = button.dataset.pan;
+  button.addEventListener('pointerdown', (e) => {
+    e.preventDefault();                 // no text selection, no ghost click
+    button.setPointerCapture(e.pointerId);
+    startPanning(direction);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) =>
+    button.addEventListener(type, stopPanning));
+  button.addEventListener('contextmenu', (e) => e.preventDefault());
+});
+
+window.addEventListener('blur', stopPanning);   // a held button with the tab gone would run forever
+
+$('btn-color').addEventListener('click', (e) => {
+  e.stopPropagation();               // the document handler below would close it again
+  togglePalette();
+});
+
+document.addEventListener('click', (e) => {
+  if (!$('palette').classList.contains('open')) return;
+  if ($('palette').contains(e.target) || $('btn-color').contains(e.target)) return;
+  closePalette();
+});
+
 $('btn-zoom-in').addEventListener('click', () => zoomFromCenter(ZOOM_STEP));
 $('btn-zoom-out').addEventListener('click', () => zoomFromCenter(1 / ZOOM_STEP));
 $('btn-zoom-reset').addEventListener('click', () => resetView({ smooth: true }));
@@ -811,6 +921,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
+  if (e.key === 'Escape') closePalette();
   if ($('color-screen').classList.contains('hidden')) return;
 
   if (e.key === '+' || e.key === '=') {

@@ -19,6 +19,7 @@ Netlify, a folder served by `python3 -m http.server`). Copy all four files.
 - **16 colors**, including white, which acts as an eraser.
 - **The background is colorable too** — tap any empty space around the animal.
 - **Three brush sizes** on the painting pages.
+- **Zoom and pan** — pinch or scroll, two fingers to drag, or the pan pad.
 - **Undo** (also Ctrl/Cmd-Z) and **Start Over**.
 - **Zoom and pan** for pictures with small parts — pinch or scroll to zoom, drag
   to move around, or use the round buttons in the corner of the page. See
@@ -59,6 +60,19 @@ screen, because they were never committed to a particular pixel grid.
 **Gestures.** One finger always paints, so panning moves to two fingers (which
 also pinch to zoom). On a coloring page a one-finger drag still pans, as before.
 
+Every two-finger gesture begins as one finger down, so the first finger of a
+pinch has already started painting by the time the second arrives. A stroke less
+than 300ms old is therefore taken back rather than kept when a second finger
+lands — the child was reaching to pan. A stroke older than that was deliberate,
+and resting a second finger mid-stroke will not destroy it.
+
+That leaves the mouse, which has no second finger and so cannot pan a painting
+page at all. Hence the **pan pad** in the bottom-left corner: hold a direction
+and the picture glides. It appears only when the picture is zoomed in, and it is
+deliberately a separate control rather than a hand/pan *mode* — a mode means a
+child taps expecting to pan and paints instead, which is the confusion worth
+avoiding.
+
 ## How the coloring works
 
 Each picture is an SVG whose colorable parts are separate closed shapes. A tap
@@ -80,6 +94,18 @@ A painting page uses none of these except `ink`: it has no fillable shapes at
 all, only outlines, and gets no backdrop rectangle — an opaque one would hide the
 brushwork underneath it.
 
+## Small screens
+
+Sixteen swatches and the brush row eat about a third of a phone's height, and
+most of it sits idle. Under 720px wide (or 620px tall) the palette collapses to
+a single round button showing the color in use, and opens as a sheet **over** the
+picture — never by growing the bar, since resizing the canvas would mean
+re-rendering a painting page's strokes every time it opened. Picking a color
+closes it again, as does tapping the picture or pressing Escape.
+
+On a laptop the palette stays where it is. Hiding it there would cost a tap per
+color and buy nothing.
+
 ## Zooming in
 
 A detailed picture can have parts too small for a small finger, so the coloring
@@ -93,6 +119,7 @@ page zooms up to 8×:
 | `+` `-` `0` keys | zoom in, zoom out, fit the whole picture |
 | arrow keys | move the picture when zoomed in |
 | the round buttons | zoom in, zoom out; the middle one shows the zoom and taps back to fit |
+| the pan pad | hold a direction to glide the picture; appears only when zoomed in |
 
 At 1× a drag does nothing, so every tap on an unzoomed picture is a paint —
 which is what a small child expects. Once zoomed in, a drag pans and the tap
