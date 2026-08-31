@@ -338,6 +338,7 @@ body {
   display: block;
   position: relative;
   width: 100%;
+  aspect-ratio: 1 / 1;           /* reserve the space before the picture is drawn */
 }
 
 .card-art canvas {
@@ -391,6 +392,40 @@ body {
 .swatch.selected {
   transform: scale(1.22);
   box-shadow: 0 0 0 5px var(--paper), 0 0 0 9px var(--ink);
+}
+
+/* ------------------------------------------------------------ the ... menu
+ *
+ * Start Over and Save are the two rarest things on the bar and the two most
+ * expensive to hit by accident, so on a small screen they fold away behind one
+ * button. Everything keeps its id, so nothing else has to know. */
+
+.tool-more { position: relative; display: contents; }
+#btn-more { display: none; }
+
+.tool-menu { display: contents; }
+
+@media (max-width: 720px), (max-height: 620px) {
+  .tool-more { display: block; }
+  #btn-more { display: block; }
+
+  .tool-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: 6;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    background: var(--paper);
+    border: 4px solid var(--ink);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+  }
+
+  .tool-menu.open { display: flex; }
+  .tool-menu .tool-btn { width: 100%; white-space: nowrap; }
 }
 
 /* ------------------------------------------------- the collapsed color picker

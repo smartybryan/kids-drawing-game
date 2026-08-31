@@ -21,8 +21,15 @@
     <span id="drawing-name" class="drawing-name"></span>
     <span class="toolbar-spacer"></span>
     <button id="btn-undo" class="tool-btn" title="Undo">&#8630; Undo</button>
-    <button id="btn-clear" class="tool-btn" title="Start over">Start Over</button>
-    <button id="btn-save" class="tool-btn tool-btn-primary" title="Save picture">&#11015; Save</button>
+
+    <div class="tool-more">
+      <button id="btn-more" class="tool-btn" title="More" aria-label="More"
+              aria-expanded="false">&#8943;</button>
+      <div id="tool-menu" class="tool-menu">
+        <button id="btn-clear" class="tool-btn" title="Start over">Start Over</button>
+        <button id="btn-save" class="tool-btn tool-btn-primary" title="Save picture">&#11015; Save</button>
+      </div>
+    </div>
   </header>
 
   <div class="canvas-wrap">

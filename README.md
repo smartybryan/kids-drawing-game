@@ -13,9 +13,9 @@ Netlify, a folder served by `python3 -m http.server`). Copy all four files.
 
 ## What it does
 
-- **29 pictures**, of two kinds. Most are *coloring* pages: tap a shape and it
-  fills. Three are *painting* pages (rhino, sloth, hippo) with a brush instead —
-  see **Two kinds of page** below.
+- **124 pictures**, of two kinds. 26 are *coloring* pages: tap a shape and it
+  fills. The other 98 are *painting* pages with a brush instead — see **Two kinds
+  of page** below.
 - **16 colors**, including white, which acts as an eraser.
 - **The background is colorable too** — tap any empty space around the animal.
 - **Three brush sizes** on the painting pages.
@@ -97,14 +97,22 @@ brushwork underneath it.
 ## Small screens
 
 Sixteen swatches and the brush row eat about a third of a phone's height, and
-most of it sits idle. Under 720px wide (or 620px tall) the palette collapses to
-a single round button showing the color in use, and opens as a sheet **over** the
-picture — never by growing the bar, since resizing the canvas would mean
-re-rendering a painting page's strokes every time it opened. Picking a color
-closes it again, as does tapping the picture or pressing Escape.
+most of it sits idle. Under 720px wide (or 620px tall) two things fold away:
 
-On a laptop the palette stays where it is. Hiding it there would cost a tap per
-color and buy nothing.
+- the **palette** collapses to a single round button showing the color in use,
+- **Start Over** and **Save** move behind a `⋯` button — the two rarest things on
+  the bar and the two most annoying to hit by accident.
+
+Both open **over** the picture rather than by growing the bar: resizing the
+canvas would mean re-rendering a painting page's strokes every time. Picking a
+color closes the palette, as does tapping the picture or pressing Escape.
+
+On a laptop both stay out where they are. Hiding them there would cost a tap and
+buy nothing.
+
+With 124 pages, the gallery would be slow if it drew every thumbnail at once, so
+each card takes its size immediately (the art box is square, so nothing jumps as
+you scroll) and its picture only when it is nearly on screen.
 
 ## Zooming in
 
@@ -225,7 +233,14 @@ PNG fail silently.
 
 ## Files
 
-    index.html    the two screens (gallery, coloring page)
-    styles.css    layout, big touch targets, the crayon palette
-    drawings.js   the pictures
-    app.js        picking, filling, undo, saving
+    index.html                 the two screens (gallery, coloring page)
+    styles.css                 layout, big touch targets, the crayon palette
+    drawings.js                the pictures (about 5MB — see below)
+    app.js                     picking, filling, painting, undo, saving
+    tools/import-svg-sheet.js  turns clip art into pages; not loaded by the app
+
+`drawings.js` is large because every picture is vector path data, and 124 of them
+adds up. It is still the right shape for this: the pages stay sharp at any zoom,
+they print well, and there is nothing to fetch at runtime. If it ever needs to
+shrink, the painting pages could drop to fewer decimal places without anyone
+noticing, since nothing about them is clicked.

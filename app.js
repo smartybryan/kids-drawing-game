@@ -110,38 +110,68 @@ function toast(message) {
 
 /* ------------------------------------------------------------ picker screen */
 
+/* Drawing a hundred-odd pictures the moment the gallery opens is a lot of work
+ * to throw at a tablet, and most of them are below the fold. Each card gets its
+ * size straight away (the art box is square, so nothing jumps) and its picture
+ * only when it is nearly on screen. */
+let galleryWatcher = null;
+
 function buildGallery() {
   const gallery = $('gallery');
+  if (galleryWatcher) galleryWatcher.disconnect();
+  galleryWatcher = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((entries, watcher) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          watcher.unobserve(entry.target);
+          drawCardArt(entry.target);
+        }
+      }, { root: gallery, rootMargin: '400px' })
+    : null;
+
   gallery.innerHTML = '';
 
-  for (const drawing of DRAWINGS) {
+  DRAWINGS.forEach((drawing, index) => {
     const card = document.createElement('button');
     card.className = 'card';
     card.type = 'button';
-
-    const brush = isPaintPage(drawing);
-    card.innerHTML =
-      `<span class="card-art">${brush ? '<canvas width="300" height="300"></canvas>' : ''}` +
-      `${svgMarkup(drawing)}${brush ? '<span class="card-badge">&#128396;</span>' : ''}</span>` +
-      `<span class="card-name">${drawing.name}</span>`;
-
-    // Thumbnails show the work already saved for that page, either way it was made.
-    if (brush) {
-      const [, , vbWidth] = drawing.viewBox.trim().split(/\s+/).map(Number);
-      const thumb = card.querySelector('canvas');
-      replayStrokes(thumb.getContext('2d'), loadPainting(drawing.id),
-                    thumb.width / vbWidth, drawing.viewBox);
-    } else {
-      const saved = loadColors(drawing.id);
-      regionsOf(card).forEach((el, i) => {
-        if (saved[i]) el.style.fill = saved[i];
-        el.style.pointerEvents = 'none';
-        el.style.cursor = 'inherit';
-      });
-    }
+    card.dataset.drawing = index;
+    card.innerHTML = `<span class="card-art"></span>` +
+                     `<span class="card-name">${drawing.name}</span>`;
 
     card.addEventListener('click', () => openDrawing(drawing));
     gallery.appendChild(card);
+
+    if (galleryWatcher) galleryWatcher.observe(card); else drawCardArt(card);
+  });
+}
+
+/* Fill in one card's picture, with whatever work has already been saved on it. */
+function drawCardArt(card) {
+  const drawing = DRAWINGS[Number(card.dataset.drawing)];
+  if (!drawing) return;
+
+  const art = card.querySelector('.card-art');
+  if (!art || art.dataset.drawn) return;
+  art.dataset.drawn = '1';
+
+  const brush = isPaintPage(drawing);
+  art.innerHTML = `${brush ? '<canvas width="300" height="300"></canvas>' : ''}` +
+                  `${svgMarkup(drawing)}` +
+                  `${brush ? '<span class="card-badge">&#128396;</span>' : ''}`;
+
+  if (brush) {
+    const [, , vbWidth] = drawing.viewBox.trim().split(/\s+/).map(Number);
+    const thumb = art.querySelector('canvas');
+    replayStrokes(thumb.getContext('2d'), loadPainting(drawing.id),
+                  thumb.width / vbWidth, drawing.viewBox);
+  } else {
+    const saved = loadColors(drawing.id);
+    regionsOf(art).forEach((el, i) => {
+      if (saved[i]) el.style.fill = saved[i];
+      el.style.pointerEvents = 'none';
+      el.style.cursor = 'inherit';
+    });
   }
 }
 
@@ -191,6 +221,16 @@ function closePalette() {
 
 function togglePalette() {
   if ($('palette').classList.contains('open')) closePalette(); else openPalette();
+}
+
+function closeToolMenu() {
+  $('tool-menu').classList.remove('open');
+  $('btn-more').setAttribute('aria-expanded', 'false');
+}
+
+function toggleToolMenu() {
+  const open = $('tool-menu').classList.toggle('open');
+  $('btn-more').setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
 
@@ -290,6 +330,7 @@ function refreshUndoButton() {
 
 function goBack() {
   closePalette();
+  closeToolMenu();
   if (isPaintPage(state.drawing)) savePainting(); else saveColors();
   buildGallery();                      // refresh thumbnails with the new colors
   $('color-screen').classList.add('hidden');
@@ -892,10 +933,20 @@ $('btn-color').addEventListener('click', (e) => {
   togglePalette();
 });
 
+$('btn-more').addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleToolMenu();
+});
+
+/* Anything opened over the picture closes again on the next tap elsewhere. */
 document.addEventListener('click', (e) => {
-  if (!$('palette').classList.contains('open')) return;
-  if ($('palette').contains(e.target) || $('btn-color').contains(e.target)) return;
-  closePalette();
+  if ($('palette').classList.contains('open') &&
+      !$('palette').contains(e.target) && !$('btn-color').contains(e.target)) {
+    closePalette();
+  }
+  if ($('tool-menu').classList.contains('open') && !$('btn-more').contains(e.target)) {
+    closeToolMenu();
+  }
 });
 
 $('btn-zoom-in').addEventListener('click', () => zoomFromCenter(ZOOM_STEP));
@@ -921,7 +972,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key === 'Escape') closePalette();
+  if (e.key === 'Escape') { closePalette(); closeToolMenu(); }
   if ($('color-screen').classList.contains('hidden')) return;
 
   if (e.key === '+' || e.key === '=') {
