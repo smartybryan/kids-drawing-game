@@ -57,6 +57,20 @@ that is what coloring outside the lines is — but it can never cover one. No
 clipping, no masking, no hit testing; the whole "don't paint over the outlines"
 requirement is just the stacking order.
 
+**Where the picture is** matters more than it sounds. The canvas box asks for a
+1:1 aspect ratio *and* full height, and on a tall phone the width gets clamped
+while the height stands — so the box comes out taller than it is wide, and the
+SVG fits the picture to the width and centres it, leaving a band above and below.
+Anything converting between the screen and the picture has to go through that
+same fit. Assuming the picture filled the box put strokes progressively above the
+finger down the page: about right at the top, tens of pixels out at the bottom.
+`pictureFit()` is now the single answer to "where is the picture", and the
+pointer maths, the paint layer and its redraws all read it.
+
+Paint is clipped to the picture, so a stroke that strays into the band does not
+appear on screen and then go missing from the saved PNG, which crops to the
+picture.
+
 **What is stored** is a list of strokes — a color, a width, and a run of points
 in the picture's own `0 0 400 400` space — not a grid of pixels. Everything falls
 out of that: undo is dropping the last stroke and drawing the rest again, saving

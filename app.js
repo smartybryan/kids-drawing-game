@@ -618,24 +618,53 @@ function loadPainting(id) {
   }
 }
 
+/* Where the picture actually sits inside the canvas box.
+ *
+ * The box is not reliably square: it asks for a 1:1 aspect ratio but also for
+ * full height, and on a tall phone the width gets clamped while the height
+ * stands, so the box comes out taller than it is wide. The SVG then does what
+ * SVGs do -- scales the picture to fit and centres it, leaving a band above and
+ * below. Everything that converts between the screen and the picture has to go
+ * through the same fit, or strokes land somewhere other than the finger. */
+function pictureFit() {
+  const box = stageSize();
+  const [, , vbWidth, vbHeight] = state.drawing.viewBox.trim().split(/\s+/).map(Number);
+  const scale = Math.min((box.width || 1) / vbWidth, (box.height || 1) / vbHeight);
+  return {
+    scale,
+    left: ((box.width || 0) - vbWidth * scale) / 2,
+    top: ((box.height || 0) - vbHeight * scale) / 2
+  };
+}
+
 /* Where a stroke lands in the picture's own coordinates: undo the zoom
  * transform, then the fit of the picture into the canvas box. */
 function toDrawing(clientX, clientY) {
   const stage = toStage(clientX, clientY);
-  const box = stageSize();
-  const [minX, minY, width, height] = state.drawing.viewBox.trim().split(/\s+/).map(Number);
+  const [minX, minY] = state.drawing.viewBox.trim().split(/\s+/).map(Number);
+  const fit = pictureFit();
   return {
-    x: minX + ((stage.x - view.x) / view.scale / (box.width || 1)) * width,
-    y: minY + ((stage.y - view.y) / view.scale / (box.height || 1)) * height
+    x: minX + ((stage.x - view.x) / view.scale - fit.left) / fit.scale,
+    y: minY + ((stage.y - view.y) / view.scale - fit.top) / fit.scale
   };
 }
 
 /* Draw the strokes onto any context, given how many device pixels one drawing
  * unit is worth. Used for the page itself, the gallery thumbnails and the PNG. */
-function replayStrokes(ctx, strokes, scale, viewBox) {
-  const [minX, minY] = viewBox.trim().split(/\s+/).map(Number);
+function replayStrokes(ctx, strokes, scale, viewBox, offsetX = 0, offsetY = 0) {
+  const [minX, minY, vbWidth, vbHeight] = viewBox.trim().split(/\s+/).map(Number);
   ctx.save();
-  ctx.setTransform(scale, 0, 0, scale, -minX * scale, -minY * scale);
+  ctx.setTransform(scale, 0, 0, scale, offsetX - minX * scale, offsetY - minY * scale);
+
+  // Keep paint on the picture. On a tall screen the canvas box is taller than
+  // the picture, and a stroke wandering into the band beside it would show on
+  // screen but be missing from the saved PNG, which crops to the picture.
+  if (ctx.clip) {
+    ctx.beginPath();
+    ctx.rect(minX, minY, vbWidth, vbHeight);
+    ctx.clip();
+  }
+
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -660,6 +689,20 @@ function replayStrokes(ctx, strokes, scale, viewBox) {
   ctx.restore();
 }
 
+/* How the live paint layer maps a drawing unit onto its backing store: the same
+ * fit the SVG uses, scaled up by however many device pixels the store holds per
+ * CSS pixel. */
+function paintTransform() {
+  const box = stageSize();
+  const perCssPixel = box.width ? painting.layer.width / box.width : 1;
+  const fit = pictureFit();
+  return {
+    scale: fit.scale * perCssPixel,
+    offsetX: fit.left * perCssPixel,
+    offsetY: fit.top * perCssPixel
+  };
+}
+
 /* Size the canvas to the zoom it is being viewed at, so brushwork stays sharp
  * when a child zooms in, then draw everything again. */
 function refreshPaintLayer() {
@@ -676,10 +719,11 @@ function refreshPaintLayer() {
     painting.layer.width = width;
     painting.layer.height = height;
   }
-  const [, , vbWidth] = state.drawing.viewBox.trim().split(/\s+/).map(Number);
+  const at = paintTransform();
   painting.ctx.setTransform(1, 0, 0, 1, 0, 0);
   painting.ctx.clearRect(0, 0, width, height);
-  replayStrokes(painting.ctx, painting.strokes, width / vbWidth, state.drawing.viewBox);
+  replayStrokes(painting.ctx, painting.strokes, at.scale, state.drawing.viewBox,
+                at.offsetX, at.offsetY);
 }
 
 /* A two-finger gesture always starts as one finger down, so the first finger of
@@ -741,10 +785,10 @@ function drawActiveTail() {
   const stroke = painting.active;
   if (!painting.ctx || !stroke) return;
   const points = stroke.points;
-  const [, , vbWidth] = state.drawing.viewBox.trim().split(/\s+/).map(Number);
+  const at = paintTransform();
   const tail = points.length >= 4 ? points.slice(-4) : points.slice(-2);
   replayStrokes(painting.ctx, [{ color: stroke.color, width: stroke.width, points: tail }],
-                painting.layer.width / vbWidth, state.drawing.viewBox);
+                at.scale, state.drawing.viewBox, at.offsetX, at.offsetY);
 }
 
 const round1 = (v) => Math.round(v * 10) / 10;
