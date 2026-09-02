@@ -472,6 +472,74 @@ body {
   .palette.open { display: flex; }
 }
 
+/* --------------------------------------------------------------- the mixer
+ *
+ * Sixteen fixed crayons cannot make a brown, a skin tone, or the muddy greens
+ * these animals want, so there is a wheel as well. Hue runs around it and
+ * saturation outwards; the strip underneath sets brightness, which is what
+ * actually separates orange from brown. Four mixed colors are kept.
+ */
+
+.mixer {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% - 8px);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  background: var(--paper);
+  border: 4px solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: 0 -6px 0 rgba(0, 0, 0, .12);
+}
+
+.wheel, .brightness {
+  touch-action: none;
+  cursor: crosshair;
+  border-radius: 12px;
+}
+
+.wheel { border-radius: 50%; }
+.brightness { border: 3px solid var(--ink); width: 240px; height: 34px; }
+
+.mixer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.mix-preview {
+  width: 52px;
+  height: 52px;
+  border: 4px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+}
+
+.mix-slots { display: flex; gap: 8px; }
+
+/* the slot the next color lands in wears the ring */
+.mix-slots .swatch.target {
+  box-shadow: 0 0 0 5px var(--paper), 0 0 0 9px var(--ink);
+}
+
+/* an unused custom slot reads as an empty hole rather than a white crayon */
+.swatch.empty {
+  background: repeating-linear-gradient(45deg, #fff, #fff 6px, #e6e6e6 6px, #e6e6e6 12px);
+}
+
+.swatch.mix {
+  font-size: 26px;
+  line-height: 1;
+  background: conic-gradient(#e53935, #fdd835, #43a047, #29b6f6, #8e24aa, #e53935);
+}
+
 /* ------------------------------------------------------------------ toast */
 
 .toast {

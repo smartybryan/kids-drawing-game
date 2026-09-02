@@ -13,10 +13,11 @@ Netlify, a folder served by `python3 -m http.server`). Copy all four files.
 
 ## What it does
 
-- **124 pictures**, of two kinds. 26 are *coloring* pages: tap a shape and it
-  fills. The other 98 are *painting* pages with a brush instead — see **Two kinds
-  of page** below.
-- **16 colors**, including white, which acts as an eraser.
+- **124 pictures**, of two kinds. 24 are *coloring* pages: tap a shape and it
+  fills. The other 100 are *painting* pages with a brush instead — see **Two
+  kinds of page** below. Every page from the safari set is a painting page.
+- **16 colors**, including white, which acts as an eraser, plus a color wheel
+  for mixing four more that are kept between visits.
 - **The background is colorable too** — tap any empty space around the animal.
 - **Three brush sizes** on the painting pages.
 - **Zoom and pan** — pinch or scroll, two fingers to drag, or the pan pad.
@@ -44,6 +45,11 @@ A brush does not care. It needs no shapes, so any drawing at all can become a
 painting page, and it suits an older child who wants to choose where the color
 goes. The pictures that could not be made into coloring pages became painting
 pages instead.
+
+Switching a page between the two is just the `mode` flag and re-importing the
+art (`--paint` drops the fillable shapes and keeps the outlines). The two kinds
+save under different keys, so work done one way is left alone rather than
+overwritten if a page is ever switched back.
 
 **How it works.** The child paints on a `<canvas>` that sits *underneath* the
 outlines, which are drawn over the top of it. So paint can wander across a line —
@@ -93,6 +99,32 @@ Three CSS classes carry all the meaning:
 A painting page uses none of these except `ink`: it has no fillable shapes at
 all, only outlines, and gets no backdrop rectangle — an opaque one would hide the
 brushwork underneath it.
+
+## Mixing colors
+
+Sixteen crayons cannot make a brown, a skin tone, or the muddy greens most of
+these animals want, so the palette also has a wheel. Hue runs around it and
+saturation outwards; the strip underneath sets brightness, and that strip is
+what earns the feature — orange only becomes brown by pulling it dark, and
+without it the wheel would just be the sixteen crayons again with gaps filled in.
+
+Four mixed colors are kept, in `localStorage`, and they sit in the palette beside
+the fixed crayons so a color a child made is one tap away afterwards. Mixing a
+fifth has to evict one, so the slot about to be overwritten wears a ring and can
+be re-aimed by tapping a different one. Nothing a child made disappears without
+them choosing it. Tapping a slot that already holds a color also loads it back
+into the wheel, so a shade can be nudged rather than mixed again from scratch.
+
+The slots are positional: four entries, empty ones held as `null`. Dropping the
+empty ones when saving would have quietly shuffled a color out of the third slot
+and into the first on the next visit.
+
+Only **Done**, Escape, or a tap outside closes the mixer. Everything inside it is
+part of choosing a color, so the panel stays put while a child hunts around.
+
+While a finger is sliding around the wheel only the screen is updated; the write
+to storage and the palette rebuild wait for the finger to lift, since either one
+per pointer-move would be dozens of times a second for nothing.
 
 ## Small screens
 

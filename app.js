@@ -200,6 +200,32 @@ function buildPalette() {
     palette.appendChild(swatch);
   });
 
+  // the colors this child mixed, kept next to the fixed crayons
+  mixer.colors.forEach((color) => {
+    if (!color) return;
+    const swatch = document.createElement('button');
+    swatch.className = 'swatch' + (color === state.color ? ' selected' : '');
+    swatch.type = 'button';
+    swatch.style.background = color;
+    swatch.setAttribute('aria-label', `Color ${color}`);
+    swatch.addEventListener('click', () => {
+      state.color = color;
+      palette.querySelectorAll('.swatch').forEach((s) => s.classList.remove('selected'));
+      swatch.classList.add('selected');
+      showCurrentColor();
+      closePalette();
+    });
+    palette.appendChild(swatch);
+  });
+
+  const mix = document.createElement('button');
+  mix.className = 'swatch mix';
+  mix.type = 'button';
+  mix.id = 'btn-mix';
+  mix.setAttribute('aria-label', 'Mix a color');
+  mix.addEventListener('click', (e) => { e.stopPropagation(); openMixer(); });
+  palette.appendChild(mix);
+
   showCurrentColor();
 }
 
@@ -231,6 +257,216 @@ function closeToolMenu() {
 function toggleToolMenu() {
   const open = $('tool-menu').classList.toggle('open');
   $('btn-more').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+
+/* ----------------------------------------------------------- mixing colors
+ *
+ * Hue runs around the wheel and saturation outwards from the middle; the strip
+ * under it sets brightness. The strip matters more than it looks: without it
+ * there is no brown, no skin tone and no dark green, which is most of what an
+ * animal wants.
+ *
+ * Four mixed colors are kept, and they sit in the palette next to the fixed
+ * crayons so a color a child made is one tap away afterwards. Mixing a fifth
+ * would have to evict one, so the slot about to be overwritten is ringed and
+ * can be re-aimed by tapping a different one -- nothing disappears by surprise.
+ */
+
+const CUSTOM_SLOTS = 4;
+
+const mixer = {
+  colors: new Array(CUSTOM_SLOTS).fill(null),   // one per slot; null means empty
+  target: 0,         // which slot the next pick lands in
+  hue: 0,
+  saturation: 1,
+  value: 1
+};
+
+const CUSTOM_KEY = 'kids-drawing-game:custom-colors';
+
+/* Always four entries, empty ones held as null. Keeping the shape means a color
+ * put in the third slot is still in the third slot tomorrow; filtering the empty
+ * ones out would quietly shuffle everything left on the next visit. */
+function loadCustomColors() {
+  const slots = new Array(CUSTOM_SLOTS).fill(null);
+  try {
+    const saved = JSON.parse(localStorage.getItem(CUSTOM_KEY));
+    if (Array.isArray(saved)) {
+      saved.slice(0, CUSTOM_SLOTS).forEach((color, i) => {
+        if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) slots[i] = color;
+      });
+    }
+  } catch (e) {
+    /* nothing saved, or nothing readable */
+  }
+  return slots;
+}
+
+function saveCustomColors() {
+  try {
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(mixer.colors));
+  } catch (e) {
+    /* nothing to be done; the colors just won't outlive the tab */
+  }
+}
+
+function hsvToHex(h, s, v) {
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  const [r, g, b] =
+    h < 60  ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] :
+    h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  const byte = (n) => Math.round((n + m) * 255).toString(16).padStart(2, '0');
+  return `#${byte(r)}${byte(g)}${byte(b)}`;
+}
+
+function hexToHsv(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), span = max - min;
+
+  let hue = 0;
+  if (span) {
+    if (max === r) hue = 60 * (((g - b) / span) % 6);
+    else if (max === g) hue = 60 * ((b - r) / span + 2);
+    else hue = 60 * ((r - g) / span + 4);
+  }
+  return { hue: (hue + 360) % 360, saturation: max ? span / max : 0, value: max };
+}
+
+/* Where a tap on the wheel lands, in hue and saturation. Past the rim it clamps
+ * rather than missing, so a fat fingertip on the edge still picks that color. */
+function wheelColorAt(x, y, size) {
+  const radius = size / 2;
+  const dx = (x - radius) / radius;
+  const dy = (y - radius) / radius;
+  const distance = Math.hypot(dx, dy);
+  return {
+    hue: (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360,
+    saturation: Math.min(1, distance)
+  };
+}
+
+function drawWheel() {
+  const canvas = $('wheel');
+  const ctx = canvas.getContext('2d');
+  const size = canvas.width;
+  const image = ctx.createImageData(size, size);
+  const pixels = image.data;
+  const radius = size / 2;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (x - radius) / radius, dy = (y - radius) / radius;
+      const distance = Math.hypot(dx, dy);
+      const at = (y * size + x) * 4;
+      if (distance > 1) { pixels[at + 3] = 0; continue; }
+
+      const hex = hsvToHex((Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360, distance, mixer.value);
+      pixels[at] = parseInt(hex.slice(1, 3), 16);
+      pixels[at + 1] = parseInt(hex.slice(3, 5), 16);
+      pixels[at + 2] = parseInt(hex.slice(5, 7), 16);
+      pixels[at + 3] = distance > 0.97 ? Math.round((1 - distance) / 0.03 * 255) : 255;  // soft rim
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+}
+
+function drawBrightness() {
+  const canvas = $('brightness');
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width, height = canvas.height;
+  for (let x = 0; x < width; x++) {
+    ctx.fillStyle = hsvToHex(mixer.hue, mixer.saturation, x / (width - 1));
+    ctx.fillRect(x, 0, 1, height);
+  }
+}
+
+function currentMix() {
+  return hsvToHex(mixer.hue, mixer.saturation, mixer.value);
+}
+
+/* Put the mixed color in the ringed slot and select it. While a finger is still
+ * sliding around the wheel this only touches what is on screen; the write to
+ * storage and the palette rebuild wait for the finger to come up, since doing
+ * either per pointer-move would be dozens of times a second for nothing. */
+function applyMix(commit) {
+  const color = currentMix();
+  mixer.colors[mixer.target] = color;
+  state.color = color;
+  showCurrentColor();
+  $('mix-preview').style.background = color;
+
+  const slot = $('mix-slots').children[mixer.target];
+  if (slot) {
+    slot.style.background = color;
+    slot.classList.remove('empty');
+  }
+
+  if (commit) {
+    saveCustomColors();
+    buildPalette();
+  }
+}
+
+function buildMixSlots() {
+  const row = $('mix-slots');
+  row.innerHTML = '';
+
+  for (let slot = 0; slot < CUSTOM_SLOTS; slot++) {
+    const color = mixer.colors[slot];
+    const button = document.createElement('button');
+    button.className = 'swatch' + (color ? '' : ' empty') + (slot === mixer.target ? ' target' : '');
+    button.type = 'button';
+    if (color) button.style.background = color;
+    button.setAttribute('aria-label', color ? `Replace ${color}` : 'Empty slot');
+
+    button.addEventListener('click', () => {
+      mixer.target = slot;
+      // Move the ring by hand rather than rebuilding the row. Rebuilding would
+      // throw away the element that was just clicked, and a click on a detached
+      // node reads as a click outside the mixer -- which used to close it.
+      row.querySelectorAll('.swatch').forEach((s) => s.classList.remove('target'));
+      button.classList.add('target');
+
+      // A slot that already holds a color loads back into the wheel, so it can
+      // be nudged rather than mixed again from scratch.
+      const held = mixer.colors[slot];
+      if (held) {
+        const at = hexToHsv(held);
+        mixer.hue = at.hue;
+        mixer.saturation = at.saturation;
+        mixer.value = at.value;
+        state.color = held;
+        showCurrentColor();
+        $('mix-preview').style.background = held;
+        drawWheel();
+        drawBrightness();
+      }
+    });
+
+    row.appendChild(button);
+  }
+}
+
+function openMixer() {
+  // aim at the first empty slot so the easy path never overwrites a kept color
+  const empty = mixer.colors.findIndex((color) => !color);
+  mixer.target = empty === -1 ? 0 : empty;
+
+  $('mixer').classList.remove('hidden');
+  $('palette').classList.remove('open');
+  $('mix-preview').style.background = currentMix();
+  buildMixSlots();
+  drawWheel();
+  drawBrightness();
+}
+
+function closeMixer() {
+  $('mixer').classList.add('hidden');
 }
 
 
@@ -331,6 +567,7 @@ function refreshUndoButton() {
 function goBack() {
   closePalette();
   closeToolMenu();
+  closeMixer();
   if (isPaintPage(state.drawing)) savePainting(); else saveColors();
   buildGallery();                      // refresh thumbnails with the new colors
   $('color-screen').classList.add('hidden');
@@ -928,6 +1165,54 @@ $('pan-pad').querySelectorAll('.pan-btn').forEach((button) => {
 
 window.addEventListener('blur', stopPanning);   // a held button with the tab gone would run forever
 
+/* Both surfaces track a finger while it is down, so a child can slide around
+ * hunting for a shade instead of tapping repeatedly. */
+function trackPicker(canvas, onPick) {
+  const pickFrom = (e, commit) => {
+    const box = canvas.getBoundingClientRect();
+    onPick((e.clientX - box.left) * (canvas.width / box.width),
+           (e.clientY - box.top) * (canvas.height / box.height), commit);
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+    canvas.dataset.picking = '1';
+    pickFrom(e, false);
+  });
+  canvas.addEventListener('pointermove', (e) => { if (canvas.dataset.picking) pickFrom(e, false); });
+  ['pointerup', 'pointercancel'].forEach((type) =>
+    canvas.addEventListener(type, (e) => {
+      if (!canvas.dataset.picking) return;
+      delete canvas.dataset.picking;
+      pickFrom(e, true);                 // the finger lifted: now keep it
+    }));
+}
+
+trackPicker($('wheel'), (x, y, commit) => {
+  const at = wheelColorAt(x, y, $('wheel').width);
+  mixer.hue = at.hue;
+  mixer.saturation = at.saturation;
+  drawBrightness();
+  applyMix(commit);
+});
+
+trackPicker($('brightness'), (x, y, commit) => {
+  const width = $('brightness').width;
+  mixer.value = Math.min(1, Math.max(0, x / (width - 1)));
+  drawWheel();
+  applyMix(commit);
+});
+
+/* Only Done, Escape, or a tap outside closes the mixer. Anything inside it --
+ * the wheel, the strip, a slot -- is part of choosing a color. */
+$('mixer').addEventListener('click', (e) => e.stopPropagation());
+
+$('btn-mix-done').addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeMixer();
+  closePalette();
+});
+
 $('btn-color').addEventListener('click', (e) => {
   e.stopPropagation();               // the document handler below would close it again
   togglePalette();
@@ -946,6 +1231,9 @@ document.addEventListener('click', (e) => {
   }
   if ($('tool-menu').classList.contains('open') && !$('btn-more').contains(e.target)) {
     closeToolMenu();
+  }
+  if (!$('mixer').classList.contains('hidden') && !$('mixer').contains(e.target)) {
+    closeMixer();
   }
 });
 
@@ -972,7 +1260,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key === 'Escape') { closePalette(); closeToolMenu(); }
+  if (e.key === 'Escape') { closePalette(); closeToolMenu(); closeMixer(); }
   if ($('color-screen').classList.contains('hidden')) return;
 
   if (e.key === '+' || e.key === '=') {
@@ -986,6 +1274,8 @@ document.addEventListener('keydown', (e) => {
     movePan(...PAN_KEYS[e.key]);
   }
 });
+
+mixer.colors = loadCustomColors();
 
 buildGallery();
 buildPalette();

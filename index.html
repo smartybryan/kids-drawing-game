@@ -55,6 +55,16 @@
   <footer class="palette-bar">
     <div id="brushes" class="brushes hidden"></div>
     <div id="palette" class="palette"></div>
+
+    <div id="mixer" class="mixer hidden">
+      <canvas id="wheel" class="wheel" width="240" height="240"></canvas>
+      <canvas id="brightness" class="brightness" width="240" height="34"></canvas>
+      <div class="mixer-row">
+        <span id="mix-preview" class="mix-preview"></span>
+        <div id="mix-slots" class="mix-slots"></div>
+        <button id="btn-mix-done" class="tool-btn tool-btn-primary">Done</button>
+      </div>
+    </div>
     <button id="btn-color" class="color-button" title="Pick a color" aria-label="Pick a color"
             aria-expanded="false"></button>
   </footer>
