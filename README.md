@@ -1,4 +1,4 @@
-# Kids' Drawing Game
+# Color Me
 
 A little coloring book for the grandkids. Pick an animal, pick a color, tap a
 part of the picture to fill it in.
