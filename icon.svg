@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img"
+     aria-label="A bear's face, half coloured in">
+  <rect width="64" height="64" fill="#ffe066"/>
+  <defs><clipPath id="coloured"><rect x="0" y="0" width="31" height="64"/></clipPath></defs>
+
+  <!-- the face, still blank paper -->
+  <g fill="#fffdf7">
+    <circle cx="15" cy="18" r="10"/><circle cx="49" cy="18" r="10"/><circle cx="32" cy="37" r="23"/>
+  </g>
+  <!-- and the half a child has got to -->
+  <g clip-path="url(#coloured)" fill="#e53935">
+    <circle cx="15" cy="18" r="10"/><circle cx="49" cy="18" r="10"/><circle cx="32" cy="37" r="23"/>
+  </g>
+  <g fill="none" stroke="#23262b" stroke-width="5">
+    <circle cx="15" cy="18" r="10"/><circle cx="49" cy="18" r="10"/><circle cx="32" cy="37" r="23"/>
+  </g>
+  <circle cx="23" cy="33" r="3.4" fill="#23262b"/><circle cx="41" cy="33" r="3.4" fill="#23262b"/>
+  <ellipse cx="32" cy="44" rx="5.5" ry="4.5" fill="#23262b"/>
+</svg>

@@ -277,12 +277,44 @@ One trap: an SVG comment may not contain a double hyphen. Browsers forgive it,
 but **Save** serializes the SVG strictly and a `--` inside a comment makes the
 PNG fail silently.
 
+## The icon, and putting it on a tablet
+
+The icon is a bear's face with one half coloured in and the other still blank
+paper, which is the app in one picture. It is drawn in the same language as the
+pages — thick outlines, palette colors, no gradients — so it survives being
+shrunk to 16 pixels, where a rotated crayon (the obvious first idea) turns into
+an ambiguous diagonal smudge.
+
+There are two versions of it on purpose:
+
+    favicon.svg          rounded tile — browsers draw it as-is in the tab
+    icon.svg             the same art full bleed, and the source for the PNGs
+    apple-touch-icon.png 180px, what an iPad home screen actually shows
+    icon-192/512.png     for the manifest
+
+The home-screen one must be **full bleed**: iOS and Android round the corners
+themselves, and a pre-rounded tile leaves transparent corners that get filled
+with black.
+
+`manifest.json` sets `display: standalone`, so added to a home screen it launches
+without browser chrome — no address bar for a small child to wander into, and it
+behaves like an app rather than a web page. Two things to know about that:
+
+- The manifest is fetched, so it only works over `http(s)`. Opening
+  `index.html` straight off the disk still runs the app fine; the browser just
+  logs a complaint about the manifest.
+- A home-screen app may keep its saved colorings **separately** from the same
+  page in the browser, so work done in Safari may not appear in the installed
+  copy. Worth checking before the kids invest an afternoon in a picture.
+
 ## Files
 
     index.html                 the two screens (gallery, coloring page)
     styles.css                 layout, big touch targets, the crayon palette
     drawings.js                the pictures (about 5MB — see below)
     app.js                     picking, filling, painting, undo, saving
+    manifest.json              name, colors and icons for a home-screen launch
+    favicon.svg, icon.svg      the icon; see above for why there are two
     tools/import-svg-sheet.js  turns clip art into pages; not loaded by the app
 
 `drawings.js` is large because every picture is vector path data, and 124 of them
