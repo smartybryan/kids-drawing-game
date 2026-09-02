@@ -548,6 +548,45 @@ body {
   background: conic-gradient(#e53935, #fdd835, #43a047, #29b6f6, #8e24aa, #e53935);
 }
 
+/* ------------------------------------------------------------ are you sure
+ *
+ * Start Over throws away everything on the page, and on a painting page there
+ * is no undo that brings it back. The safe answer is the big coloured button,
+ * because the person tapping may be three. */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(35, 38, 43, .45);
+}
+
+.modal-card {
+  width: min(420px, 100%);
+  padding: 24px 22px;
+  text-align: center;
+  background: var(--paper);
+  border: 5px solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.modal-title { margin: 0 0 6px; font-size: clamp(24px, 5vw, 32px); }
+.modal-text { margin: 0 0 20px; font-size: 19px; opacity: .8; }
+
+.modal-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.modal-buttons .tool-btn { flex: 1 1 auto; min-width: 140px; }
+
 /* ------------------------------------------------------------------ toast */
 
 .toast {

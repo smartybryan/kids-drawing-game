@@ -21,7 +21,8 @@ Netlify, a folder served by `python3 -m http.server`). Copy all four files.
 - **The background is colorable too** — tap any empty space around the animal.
 - **Three brush sizes** on the painting pages.
 - **Zoom and pan** — pinch or scroll, two fingers to drag, or the pan pad.
-- **Undo** (also Ctrl/Cmd-Z) and **Start Over**.
+- **Undo** (also Ctrl/Cmd-Z) and **Start Over**, which asks first, and which one
+  Undo puts back.
 - **Zoom and pan** for pictures with small parts — pinch or scroll to zoom, drag
   to move around, or use the round buttons in the corner of the page. See
   *Zooming in* below.
@@ -70,6 +71,17 @@ pointer maths, the paint layer and its redraws all read it.
 Paint is clipped to the picture, so a stroke that strays into the band does not
 appear on screen and then go missing from the saved PNG, which crops to the
 picture.
+
+**Undo** walks a small history rather than just popping the last stroke, because
+Start Over has to be recoverable too. A finished stroke leaves a `stroke` step
+behind; Start Over leaves a `clear` step holding everything it took away, so one
+press brings the whole picture back. Order is kept, so painting something after a
+clear undoes that stroke first and the clear second. A stroke abandoned by a
+two-finger gesture leaves no step at all, so Undo never has to skip over a mark
+that was never really made.
+
+(A coloring page still restores one shape per press after Start Over — recoverable,
+just not in a single tap.)
 
 **What is stored** is a list of strokes — a color, a width, and a run of points
 in the picture's own `0 0 400 400` space — not a grid of pixels. Everything falls

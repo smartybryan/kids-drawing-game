@@ -478,6 +478,7 @@ function openDrawing(drawing) {
   state.regions = [];
   painting.strokes = [];
   painting.active = null;
+  painting.history = [];
   painting.layer = null;
   painting.ctx = null;
 
@@ -513,6 +514,7 @@ function openDrawing(drawing) {
   }
 
   refreshUndoButton();
+  closeConfirm();
   $('picker-screen').classList.add('hidden');
   $('color-screen').classList.remove('hidden');
 
@@ -558,9 +560,34 @@ function clearDrawing() {
   saveColors();
 }
 
+/* Is there anything on this page worth protecting? Confirming a Start Over on a
+ * picture nobody has touched is just a question with one sensible answer. */
+function hasWork() {
+  if (isPaintPage(state.drawing)) return painting.strokes.length > 0;
+  return state.regions.some((el) => getColor(el) !== UNPAINTED);
+}
+
+function askToClear() {
+  closeToolMenu();
+  if (!hasWork()) return;               // nothing to lose, nothing to ask
+
+  const painty = isPaintPage(state.drawing);
+  $('confirm-text').textContent = painty
+    ? 'This clears all the painting.'
+    : 'This clears all the colors.';
+  $('btn-keep').textContent = painty ? 'Keep painting' : 'Keep coloring';
+
+  $('confirm').classList.remove('hidden');
+  if ($('btn-keep').focus) $('btn-keep').focus();   // the safe answer, ready for Enter
+}
+
+function closeConfirm() {
+  $('confirm').classList.add('hidden');
+}
+
 function refreshUndoButton() {
   $('btn-undo').disabled = isPaintPage(state.drawing)
-    ? painting.strokes.length === 0
+    ? painting.history.length === 0
     : state.undo.length === 0;
 }
 
@@ -568,6 +595,7 @@ function goBack() {
   closePalette();
   closeToolMenu();
   closeMixer();
+  closeConfirm();
   if (isPaintPage(state.drawing)) savePainting(); else saveColors();
   buildGallery();                      // refresh thumbnails with the new colors
   $('color-screen').classList.add('hidden');
@@ -591,6 +619,10 @@ function goBack() {
 const painting = {
   strokes: [],      // [{ color, width, points: [x, y, x, y, ...] }]
   active: null,     // the stroke being drawn right now
+  /* What Undo walks back. A finished stroke leaves a 'stroke' behind; Start Over
+   * leaves a 'clear' holding everything it took away, so the whole picture comes
+   * back in one press instead of being gone for good. */
+  history: [],      // [{ type: 'stroke' } | { type: 'clear', strokes: [...] }]
   brush: 1,         // index into BRUSHES
   layer: null,      // the <canvas>
   ctx: null
@@ -760,6 +792,8 @@ function endStroke() {
   if (!painting.active) return;
   delete painting.active.startedAt;      // not worth storing
   painting.active = null;
+  painting.history.push({ type: 'stroke' });
+  refreshUndoButton();
   savePainting();
 }
 
@@ -794,8 +828,12 @@ function drawActiveTail() {
 const round1 = (v) => Math.round(v * 10) / 10;
 
 function undoStroke() {
-  if (!painting.strokes.length) return;
-  painting.strokes.pop();
+  const step = painting.history.pop();
+  if (!step) return;
+
+  if (step.type === 'clear') painting.strokes = step.strokes;   // the whole picture, back
+  else painting.strokes.pop();
+
   refreshPaintLayer();
   refreshUndoButton();
   savePainting();
@@ -803,7 +841,8 @@ function undoStroke() {
 
 function clearPainting() {
   if (!painting.strokes.length) return;
-  painting.strokes = [];
+  painting.history.push({ type: 'clear', strokes: painting.strokes });
+  painting.strokes = [];                 // a new array, so the old one stays intact
   refreshPaintLayer();
   refreshUndoButton();
   savePainting();
@@ -1287,7 +1326,17 @@ $('btn-zoom-reset').addEventListener('click', () => resetView({ smooth: true }))
 
 $('btn-back').addEventListener('click', goBack);
 $('btn-undo').addEventListener('click', undo);
-$('btn-clear').addEventListener('click', clearDrawing);
+$('btn-clear').addEventListener('click', askToClear);
+$('btn-keep').addEventListener('click', closeConfirm);
+$('btn-confirm-clear').addEventListener('click', () => {
+  closeConfirm();
+  clearDrawing();
+});
+
+/* Tapping the dimmed area behind the card is a no, like tapping Keep. */
+$('confirm').addEventListener('click', (e) => {
+  if (e.target === $('confirm')) closeConfirm();
+});
 $('btn-save').addEventListener('click', savePng);
 
 const PAN_KEYS = {
@@ -1304,7 +1353,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key === 'Escape') { closePalette(); closeToolMenu(); closeMixer(); }
+  if (e.key === 'Escape') { closePalette(); closeToolMenu(); closeMixer(); closeConfirm(); }
   if ($('color-screen').classList.contains('hidden')) return;
 
   if (e.key === '+' || e.key === '=') {
