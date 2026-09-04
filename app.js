@@ -28,7 +28,7 @@ const state = {
 
 /* Brush widths in drawing units, so they look the same on every picture and on
  * every screen. The pictures are 400 units across. */
-const BRUSHES = [7, 15, 28];
+const BRUSHES = [3.5, 7, 15, 28];
 
 const isPaintPage = (drawing) => Boolean(drawing) && drawing.mode === 'paint';
 
@@ -623,7 +623,7 @@ const painting = {
    * leaves a 'clear' holding everything it took away, so the whole picture comes
    * back in one press instead of being gone for good. */
   history: [],      // [{ type: 'stroke' } | { type: 'clear', strokes: [...] }]
-  brush: 1,         // index into BRUSHES
+  brush: 2,         // index into BRUSHES
   layer: null,      // the <canvas>
   ctx: null
 };
@@ -851,6 +851,11 @@ function clearPainting() {
 
 /* ----------------------------------------------------------- brush picker */
 
+/* The dot each button shows is drawn a little fatter than the brush really is,
+ * so the thinnest one is still an easy target for a small finger. */
+const BRUSH_LABELS = ['Tiny brush', 'Thin brush', 'Medium brush', 'Thick brush'];
+const BRUSH_DOTS = [4, 8, 15, 22];
+
 function buildBrushes() {
   const bar = $('brushes');
   bar.innerHTML = '';
@@ -859,10 +864,10 @@ function buildBrushes() {
     const button = document.createElement('button');
     button.className = 'brush' + (index === painting.brush ? ' selected' : '');
     button.type = 'button';
-    button.setAttribute('aria-label', ['Thin brush', 'Medium brush', 'Thick brush'][index] || 'Brush');
+    button.setAttribute('aria-label', BRUSH_LABELS[index] || 'Brush');
 
     const dot = document.createElement('span');
-    const size = 6 + index * 8;
+    const size = BRUSH_DOTS[index] || 6;
     dot.style.width = `${size}px`;
     dot.style.height = `${size}px`;
     button.appendChild(dot);
