@@ -17,9 +17,11 @@ Netlify, a folder served by `python3 -m http.server`). Copy all four files.
   fills. The other 100 are *painting* pages with a brush instead — see **Two
   kinds of page** below. Every page from the safari set is a painting page.
 - **16 colors**, including white, which acts as an eraser, plus a color wheel
-  for mixing four more that are kept between visits.
+  for mixing four more that are kept between visits, and a **dropper** that takes
+  a color back off the picture.
 - **The background is colorable too** — tap any empty space around the animal.
-- **Three brush sizes** on the painting pages.
+- **Four brush sizes** on the painting pages, down to a tip thin enough for a
+  tight corner.
 - **Zoom and pan** — pinch or scroll, two fingers to drag, or the pan pad.
 - **Undo** (also Ctrl/Cmd-Z) and **Start Over**, which asks first, and which one
   Undo puts back.
@@ -151,6 +153,29 @@ part of choosing a color, so the panel stays put while a child hunts around.
 While a finger is sliding around the wheel only the screen is updated; the write
 to storage and the palette rebuild wait for the finger to lift, since either one
 per pointer-move would be dozens of times a second for nothing.
+
+## The dropper
+
+Sixteen crayons and four mixed slots, and still the color wanted is often one
+already on the page — the green mixed twenty strokes ago, or a shade the picture
+came with. The dropper takes it straight back: tap the dropper, tap the color,
+and that color is the one in hand.
+
+It never writes to a mixed slot. Grabbing a color off the page would otherwise
+push one of the four out of the box, which is the opposite of the point.
+
+How the color is read depends on the kind of page. A coloring page has shapes, so
+the shape tapped simply hands over the color it is holding. A painting page has
+no shapes — only pixels — so the dropper reads the paint layer instead. Round
+caps leave a soft edge, so only a solid pixel counts, and the search widens a few
+pixels: a tap near the rim of a stroke finds the color rather than a
+half-transparent blend of it. Bare paper answers nothing, which is what stops the
+dropper picking up white by accident, and the outlines live in the SVG above the
+paint layer, so a wobbly tap on a line cannot come back black.
+
+Arming it rings the dropper — and on a phone, where the palette closes to clear
+the way, rings the color button too. Escape, tapping it again, or picking any
+crayon puts it away.
 
 ## Small screens
 

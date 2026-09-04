@@ -183,6 +183,7 @@ body {
 .stage.smooth { transition: transform .18s ease; }
 
 .canvas.paint-mode { cursor: crosshair; }
+.canvas.dropper-armed { cursor: crosshair; }   /* waiting for a color to be tapped */
 .canvas.zoomed { cursor: grab; }
 .canvas.panning { cursor: grabbing; }
 
@@ -540,6 +541,29 @@ body {
 /* an unused custom slot reads as an empty hole rather than a white crayon */
 .swatch.empty {
   background: repeating-linear-gradient(45deg, #fff, #fff 6px, #e6e6e6 6px, #e6e6e6 12px);
+}
+
+/* the dropper: a blank crayon holding the pipette mark, so it reads as a tool
+ * rather than as another color. Ringed while it waits for a tap on the picture,
+ * the same ring a chosen crayon wears. */
+.swatch.dropper {
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.swatch.dropper svg { width: 60%; height: 60%; display: block; }
+
+.swatch.dropper.armed {
+  box-shadow: 0 0 0 5px var(--paper), 0 0 0 9px var(--ink);
+}
+
+/* on a phone the palette is a sheet that closes as the dropper arms, so the one
+ * button still on screen has to say the dropper is waiting */
+.color-button.armed {
+  box-shadow: 0 0 0 5px var(--paper), 0 0 0 9px var(--ink),
+              inset 0 0 0 4px var(--paper);
 }
 
 .swatch.mix {

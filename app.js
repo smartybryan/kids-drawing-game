@@ -191,6 +191,7 @@ function buildPalette() {
 
     swatch.addEventListener('click', () => {
       state.color = color;
+      armEyedropper(false);         // reaching for a crayon is not dropping
       palette.querySelectorAll('.swatch').forEach((s) => s.classList.remove('selected'));
       swatch.classList.add('selected');
       showCurrentColor();
@@ -210,6 +211,7 @@ function buildPalette() {
     swatch.setAttribute('aria-label', `Color ${color}`);
     swatch.addEventListener('click', () => {
       state.color = color;
+      armEyedropper(false);
       palette.querySelectorAll('.swatch').forEach((s) => s.classList.remove('selected'));
       swatch.classList.add('selected');
       showCurrentColor();
@@ -217,6 +219,16 @@ function buildPalette() {
     });
     palette.appendChild(swatch);
   });
+
+  // take a color back off the page -- see the dropper section below
+  const dropper = document.createElement('button');
+  dropper.className = 'swatch dropper' + (eyedropper.armed ? ' armed' : '');
+  dropper.type = 'button';
+  dropper.id = 'btn-dropper';
+  dropper.setAttribute('aria-label', 'Pick a color from the picture');
+  dropper.innerHTML = DROPPER_MARK;
+  dropper.addEventListener('click', (e) => { e.stopPropagation(); toggleEyedropper(); });
+  palette.appendChild(dropper);
 
   const mix = document.createElement('button');
   mix.className = 'swatch mix';
@@ -257,6 +269,101 @@ function closeToolMenu() {
 function toggleToolMenu() {
   const open = $('tool-menu').classList.toggle('open');
   $('btn-more').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+
+/* ------------------------------------------------- taking a color off the page
+ *
+ * Sixteen crayons and four mixed slots, and still the color wanted is often one
+ * already on the picture -- the green mixed twenty strokes ago, or a shade the
+ * page came with. The dropper takes it straight back: arm it, tap the color,
+ * and that color is the one in hand. It is deliberately not written to a mixed
+ * slot, so grabbing a color off the page never pushes one out of the box.
+ */
+
+const eyedropper = { armed: false };
+
+const DROPPER_MARK =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M17.6 2.9a2.9 2.9 0 0 1 4.1 4.1l-2.4 2.4-4.1-4.1 2.4-2.4z"/>' +   // the bulb
+  '<path d="M14.4 6.7l3.6 3.6"/>' +                                           // its collar
+  '<path d="M16 8.3l-8.6 8.6L6 21l4.1-1.4 8.6-8.6z"/>' +                      // barrel and drip
+  '</svg>';
+
+function armEyedropper(on) {
+  eyedropper.armed = on;
+  $('canvas').classList.toggle('dropper-armed', on);
+  $('btn-color').classList.toggle('armed', on);
+  const button = $('btn-dropper');
+  if (button) button.classList.toggle('armed', on);
+}
+
+function toggleEyedropper() {
+  if (eyedropper.armed) return armEyedropper(false);
+  armEyedropper(true);
+  closeMixer();
+  closePalette();                  // the picture has to be reachable to tap
+  toast(isPaintPage(state.drawing) ? 'Tap some paint to grab its color!'
+                                   : 'Tap a color in the picture!');
+}
+
+function useColorFromPicture(color) {
+  state.color = color;
+  armEyedropper(false);
+  buildPalette();                  // move the ring onto that crayon, or off them all
+  toast('Got it!');
+}
+
+/* On a painting page the colors are pixels on the canvas rather than shapes, so
+ * the dropper reads one. Round caps leave a soft edge, so only a solid pixel
+ * counts, and the search widens a few pixels -- a tap near the rim of a stroke
+ * finds the color rather than a half-transparent blend of it. Nothing outside
+ * a stroke answers, which is what keeps the dropper from picking up the paper.
+ */
+function pickFromPainting(clientX, clientY) {
+  const color = sampleStroke(clientX, clientY);
+  if (!color) return toast('No paint there -- try again!');
+  useColorFromPicture(color);
+}
+
+function sampleStroke(clientX, clientY) {
+  if (!painting.layer || !painting.ctx) return null;
+
+  const box = painting.layer.getBoundingClientRect();
+  if (!box.width || !box.height) return null;
+
+  const perCssPixel = painting.layer.width / box.width;   // the rect is post-zoom, so this is exact
+  const x = Math.round((clientX - box.left) * perCssPixel);
+  const y = Math.round((clientY - box.top) * (painting.layer.height / box.height));
+
+  const reach = Math.max(2, Math.round(perCssPixel * 4));
+  const left = Math.max(0, x - reach), top = Math.max(0, y - reach);
+  const right = Math.min(painting.layer.width - 1, x + reach);
+  const bottom = Math.min(painting.layer.height - 1, y + reach);
+  if (right < left || bottom < top) return null;
+
+  const width = right - left + 1;
+  let pixels;
+  try {
+    pixels = painting.ctx.getImageData(left, top, width, bottom - top + 1).data;
+  } catch (e) {
+    return null;                   // no reading the canvas; nothing to be done
+  }
+
+  let best = -1, bestDistance = Infinity;
+  for (let py = top; py <= bottom; py++) {
+    for (let px = left; px <= right; px++) {
+      const at = ((py - top) * width + (px - left)) * 4;
+      if (pixels[at + 3] < 250) continue;               // paper, or a stroke's soft edge
+      const distance = (px - x) * (px - x) + (py - y) * (py - y);
+      if (distance < bestDistance) { bestDistance = distance; best = at; }
+    }
+  }
+  if (best === -1) return null;
+
+  const byte = (n) => n.toString(16).padStart(2, '0');
+  return `#${byte(pixels[best])}${byte(pixels[best + 1])}${byte(pixels[best + 2])}`;
 }
 
 
@@ -453,6 +560,7 @@ function buildMixSlots() {
 }
 
 function openMixer() {
+  armEyedropper(false);
   // aim at the first empty slot so the easy path never overwrites a kept color
   const empty = mixer.colors.findIndex((color) => !color);
   mixer.target = empty === -1 ? 0 : empty;
@@ -523,6 +631,8 @@ function openDrawing(drawing) {
 }
 
 function paint(el, index) {
+  if (eyedropper.armed) return useColorFromPicture(getColor(el));
+
   const previous = getColor(el);
   if (previous === state.color) return;
 
@@ -592,6 +702,7 @@ function refreshUndoButton() {
 }
 
 function goBack() {
+  armEyedropper(false);
   closePalette();
   closeToolMenu();
   closeMixer();
@@ -1067,6 +1178,7 @@ function onPointerDown(e) {
   // On a painting page one finger always paints, so panning moves to two
   // fingers; on a fill page a drag still pans once the picture is zoomed in.
   if (isPaintPage(state.drawing)) {
+    if (eyedropper.armed) return pickFromPainting(e.clientX, e.clientY);
     try { $('canvas').setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
     beginStroke(e.clientX, e.clientY);
   } else if (view.scale > 1) {
@@ -1358,7 +1470,10 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key === 'Escape') { closePalette(); closeToolMenu(); closeMixer(); closeConfirm(); }
+  if (e.key === 'Escape') {
+    armEyedropper(false);
+    closePalette(); closeToolMenu(); closeMixer(); closeConfirm();
+  }
   if ($('color-screen').classList.contains('hidden')) return;
 
   if (e.key === '+' || e.key === '=') {
