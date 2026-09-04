@@ -20,6 +20,10 @@ Netlify, a folder served by `python3 -m http.server`). Copy all four files.
   for mixing four more that are kept between visits, and a **dropper** that takes
   a color back off the picture.
 - **The background is colorable too** — tap any empty space around the animal.
+- **A "Keep going!" row** at the top of the gallery, holding whatever has been
+  colored in, newest first.
+- **A jump rail** down the right of the gallery — tap 90 to land on the ninetieth
+  picture instead of dragging there.
 - **Four brush sizes** on the painting pages, down to a tip thin enough for a
   tight corner.
 - **Zoom and pan** — pinch or scroll, two fingers to drag, or the pan pad.
@@ -178,6 +182,63 @@ paint layer, so a wobbly tap on a line cannot come back black.
 Arming it rings the dropper — and on a phone, where the palette closes to clear
 the way, rings the color button too. Escape, tapping it again, or picking any
 crayon puts it away.
+
+## Getting down the gallery
+
+A hundred and twenty-four cards is three or four across on a tablet and forty
+rows deep, so the picture near the bottom costs a long drag to reach — twice a
+day, for the child who wants that one. Two things shorten it.
+
+### Keep going
+
+A picture gets colored over several sittings, and the one wanted next is nearly
+always the one wanted last. So every picture with work on it is repeated in a
+short row at the top under **Keep going!**, newest first, and the rest follow
+under **All the pictures**. Leaving a picture lands back at the top of the
+gallery, which puts the one just left under the finger that got there — the long
+scroll it used to take is gone rather than shortened.
+
+A picture earns its place by having color on it, not by having been opened: a
+mis-tap should not push yesterday's picture down the row. **Start Over** takes it
+back out again, since there is nothing left to come back to. Twelve are kept —
+about two rows, and a longer row would be a second gallery to scroll.
+
+The record is a list of ids in `localStorage`, written on save. That is on every
+stroke, so it checks before it writes: the picture being worked on is already at
+the front of the row, so the usual answer is to do nothing.
+
+Both headings only exist once something is in the row. An untouched app is one
+plain gallery, exactly as it was.
+
+### The jump rail
+
+The numbers down the right edge are the other half. Every tenth picture gets one;
+tapping it puts that picture at the top of the view, and sliding a finger down
+them scrubs, the gallery following as it goes rather than waiting for the finger
+to lift. The number the gallery is currently sitting at wears a ring, so the rail
+doubles as a place marker.
+
+Three small decisions in it:
+
+- **The rail sits outside the scroller.** `#gallery` is what scrolls; the rail is
+  a sibling, absolutely positioned in a wrapper around it, so it holds still
+  while the cards move under it. The gallery's right padding is widened to leave
+  it a gutter, so a card never passes underneath it.
+- **Each number owns an equal slice of the rail's height**, not just the room its
+  two digits need. What a small finger has to hit is a 40-odd pixel box, not a
+  15px label. Sliding uses the nearest number to the finger, so there are no dead
+  gaps between them either.
+- **It is dim rather than gone** when nothing is happening — a quarter opacity in
+  the margin. Fading it out completely would have hidden the one thing that
+  tells a child it is there. It brightens while the gallery moves and dims again
+  a moment after it stops.
+
+The number it rings is the first picture of the full list still showing, found by
+binary search: cards later in the list are never higher up the page, so seven
+measurements settle it instead of a hundred and twenty-four — which matters on
+every scroll event. Working it out from how far down the scroll is would have
+been cheaper still, but the "keep going" row sits above the list and would throw
+that sum out by however tall it happens to be.
 
 ## Small screens
 

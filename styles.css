@@ -55,16 +55,82 @@ body {
   opacity: .75;
 }
 
-.gallery {
+/* holds the scrolling gallery and the rail that must NOT scroll with it */
+.gallery-wrap {
+  position: relative;
   flex: 1;
+  min-height: 0;
+}
+
+.gallery {
+  height: 100%;
   overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
   gap: 24px;
-  padding: 10px 22px 30px;
+  padding: 10px 54px 30px 22px;   /* the wide right side is the rail's gutter */
   align-content: start;
   width: min(100%, 1240px);
   margin: 0 auto;
+}
+
+/* --------------------------------------------------------------- jump rail
+ *
+ * A hundred and twenty-four pictures is a long way to drag a finger, and the one
+ * near the bottom is the one wanted twice a day. The numbers down the right edge
+ * are the shortcut: tap one and the gallery goes there, or slide down them and
+ * it follows. They brighten while the gallery is moving and dim again when it
+ * stops, so they are findable without ever competing with the pictures.
+ *
+ * Each tick takes an equal share of the rail's height rather than only the room
+ * its two digits need, so the thing a small finger has to hit is a tall box, not
+ * a number. */
+.jump-rail {
+  position: absolute;
+  top: 6px;
+  bottom: 22px;
+  right: 6px;
+  width: 42px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  opacity: .35;
+  transition: opacity .2s ease;
+  touch-action: none;            /* sliding down the rail scrubs, never scrolls */
+}
+
+.jump-rail.showing { opacity: 1; }
+
+.jump-tick {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 15px;
+  font-weight: bold;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-radius: 12px;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* where the gallery is now */
+.jump-tick.here {
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  box-shadow: var(--shadow);
+}
+
+/* Once there is work to come back to the gallery falls into two bands, and each
+ * gets a label across the full width of the grid. */
+.gallery-heading {
+  grid-column: 1 / -1;
+  margin: 4px 0 -8px 4px;
+  font-size: clamp(20px, 2.4vw, 26px);
+  opacity: .7;
 }
 
 .card {

@@ -88,6 +88,7 @@ function saveColors() {
   } catch (e) {
     /* private browsing / storage full -- colouring still works, just not saved */
   }
+  noteWork(state.drawing.id, colors.some((color) => color !== UNPAINTED));
 }
 
 function loadColors(id) {
@@ -97,6 +98,50 @@ function loadColors(id) {
     return [];
   }
 }
+
+/* ----------------------------------------------------- what to come back to
+ *
+ * The gallery is a hundred and twenty-four cards long, and a child working on
+ * one picture over several sittings has to find it again every time. So the
+ * pictures with work on them are repeated in a short row at the top, newest
+ * first. Leaving a picture always lands back at the top of the gallery, which
+ * puts the one just left under the finger that got there.
+ *
+ * A picture earns its place by having color on it, not by having been opened --
+ * a mis-tap should not push yesterday's picture down the row -- and Start Over
+ * takes it back out again.
+ */
+const RECENT_KEY = 'kids-drawing-game:recent';
+const RECENT_KEPT = 12;             // about two rows; a longer row is a gallery again
+
+let recent = [];                    // ids with work on them, newest first
+
+function loadRecent() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RECENT_KEY));
+    return Array.isArray(saved) ? saved.filter((id) => typeof id === 'string') : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/* Move a picture to the front of the row, or drop it if its work is gone. This
+ * runs on every save, so the usual answer is to do nothing at all: the picture
+ * being worked on is already at the front. */
+function noteWork(id, worked) {
+  if (worked ? recent[0] === id : !recent.includes(id)) return;
+
+  recent = recent.filter((other) => other !== id);
+  if (worked) recent.unshift(id);
+  recent = recent.slice(0, RECENT_KEPT);
+
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+  } catch (e) {
+    /* no room to remember it; the row is a convenience, not the work itself */
+  }
+}
+
 
 let toastTimer = null;
 function toast(message) {
@@ -116,6 +161,12 @@ function toast(message) {
  * only when it is nearly on screen. */
 let galleryWatcher = null;
 
+/* The cards of the full list, in DRAWINGS order. The gallery may hold more than
+ * these -- the "keep going" row repeats a few of them, and there are headings
+ * between -- so the rail counts pictures with this rather than with whatever
+ * happens to be sitting in the gallery. */
+let galleryCards = [];
+
 function buildGallery() {
   const gallery = $('gallery');
   if (galleryWatcher) galleryWatcher.disconnect();
@@ -130,21 +181,148 @@ function buildGallery() {
     : null;
 
   gallery.innerHTML = '';
+  galleryCards = [];
+
+  // the pictures with work on them, newest first, repeated above the rest
+  const started = recent
+    .map((id) => DRAWINGS.findIndex((drawing) => drawing.id === id))
+    .filter((index) => index !== -1);
+
+  if (started.length) {
+    gallery.appendChild(galleryHeading('Keep going!'));
+    started.forEach((index) => gallery.appendChild(makeCard(index)));
+    gallery.appendChild(galleryHeading('All the pictures'));
+  }
 
   DRAWINGS.forEach((drawing, index) => {
-    const card = document.createElement('button');
-    card.className = 'card';
-    card.type = 'button';
-    card.dataset.drawing = index;
-    card.innerHTML = `<span class="card-art"></span>` +
-                     `<span class="card-name">${drawing.name}</span>`;
-
-    card.addEventListener('click', () => openDrawing(drawing));
+    const card = makeCard(index);
+    galleryCards.push(card);
     gallery.appendChild(card);
-
-    if (galleryWatcher) galleryWatcher.observe(card); else drawCardArt(card);
   });
+
+  buildJumpRail();
 }
+
+function makeCard(index) {
+  const drawing = DRAWINGS[index];
+  const card = document.createElement('button');
+  card.className = 'card';
+  card.type = 'button';
+  card.dataset.drawing = index;
+  card.innerHTML = `<span class="card-art"></span>` +
+                   `<span class="card-name">${drawing.name}</span>`;
+
+  card.addEventListener('click', () => openDrawing(drawing));
+  if (galleryWatcher) galleryWatcher.observe(card); else drawCardArt(card);
+  return card;
+}
+
+/* A full-width label between the two bands. Only there when there is something
+ * to come back to -- an untouched app is one plain gallery, as it was. */
+function galleryHeading(text) {
+  const heading = document.createElement('h2');
+  heading.className = 'gallery-heading';
+  heading.textContent = text;
+  return heading;
+}
+
+/* ------------------------------------------------------------- jump rail
+ *
+ * The gallery is over a hundred cards long, which is a lot of finger to get to
+ * the bottom of. The rail down the right edge is a shortcut: every tenth
+ * picture gets a number, tapping one takes the gallery there, and sliding down
+ * them scrubs -- the gallery follows the finger instead of waiting for it to
+ * let go.
+ *
+ * Nothing about it depends on how the cards are laid out, so it keeps working
+ * when the columns reflow.
+ */
+const JUMP_EVERY = 10;
+
+function buildJumpRail() {
+  const rail = $('jump-rail');
+  rail.innerHTML = '';
+
+  for (let n = JUMP_EVERY; n <= DRAWINGS.length; n += JUMP_EVERY) {
+    const tick = document.createElement('button');
+    tick.className = 'jump-tick';
+    tick.type = 'button';
+    tick.textContent = n;
+    tick.dataset.card = n - 1;                  // the number is 1-based; the row is not
+    tick.setAttribute('aria-label', `Jump to picture ${n}`);
+    rail.appendChild(tick);
+  }
+  markRail();
+}
+
+/* Scroll so the wanted card sits at the top of the view. Measured rather than
+ * calculated: offsetTop would be relative to the screen, not to the gallery. */
+function jumpToCard(index, smooth) {
+  const gallery = $('gallery');
+  const card = galleryCards[index];
+  if (!card) return;
+
+  const top = gallery.scrollTop +
+              card.getBoundingClientRect().top - gallery.getBoundingClientRect().top;
+  gallery.scrollTo({ top: Math.max(0, top - 10), behavior: smooth ? 'smooth' : 'auto' });
+}
+
+/* Which number the gallery is sitting at: the first picture of the full list
+ * still showing. Measured rather than worked out from how far down the scroll
+ * is, because the "keep going" row sits above the list and would throw that
+ * sum out by however tall it happens to be. */
+function markRail() {
+  const rail = $('jump-rail');
+  if (!rail.children.length || !galleryCards.length) return;
+
+  const at = firstShowing();
+  const nearest = Math.min(rail.children.length - 1,
+                           Math.max(0, Math.round((at + 1) / JUMP_EVERY) - 1));
+
+  for (let i = 0; i < rail.children.length; i++) {
+    rail.children[i].classList.toggle('here', i === nearest);
+  }
+}
+
+/* A binary search, not a walk: cards later in the list are never higher up the
+ * page, so seven measurements settle it instead of a hundred and twenty-four --
+ * which matters when this runs on every scroll event. */
+function firstShowing() {
+  const top = $('gallery').getBoundingClientRect().top;
+  let low = 0, high = galleryCards.length - 1, found = 0;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (galleryCards[mid].getBoundingClientRect().bottom > top + 1) {
+      found = mid;
+      high = mid - 1;
+    } else {
+      low = mid + 1;
+    }
+  }
+  return found;
+}
+
+/* The rail is dim until the gallery moves, then bright for a moment after. */
+let railTimer = null;
+function showRail(hold) {
+  $('jump-rail').classList.add('showing');
+  clearTimeout(railTimer);
+  if (!hold) railTimer = setTimeout(() => $('jump-rail').classList.remove('showing'), 1400);
+}
+
+/* Nearest tick to the finger, so the whole rail is live -- sliding between two
+ * numbers still goes somewhere rather than into a gap. */
+function tickNear(clientY) {
+  let best = null, bestGap = Infinity;
+  for (const tick of $('jump-rail').children) {
+    const box = tick.getBoundingClientRect();
+    const gap = Math.abs((box.top + box.bottom) / 2 - clientY);
+    if (gap < bestGap) { bestGap = gap; best = tick; }
+  }
+  return best;
+}
+
 
 /* Fill in one card's picture, with whatever work has already been saved on it. */
 function drawCardArt(card) {
@@ -750,6 +928,7 @@ function savePainting() {
   } catch (e) {
     /* out of room or private browsing -- painting still works, it just won't keep */
   }
+  noteWork(state.drawing.id, painting.strokes.length > 0);
 }
 
 function loadPainting(id) {
@@ -1393,6 +1572,42 @@ canvasEl.addEventListener('click', (e) => {
 
 window.addEventListener('resize', () => { applyView(); schedulePaintRefresh(); });
 
+/* ------------------------------------------------------------ the jump rail */
+
+$('gallery').addEventListener('scroll', () => { showRail(); markRail(); }, { passive: true });
+
+/* One handler for tapping a number and for sliding down them: a tap is just a
+ * scrub that ended where it started. Sliding jumps outright rather than gliding,
+ * because a smooth scroll per finger-move would be a queue of animations racing
+ * the finger. */
+let railDrag = false;
+
+$('jump-rail').addEventListener('pointerdown', (e) => {
+  const tick = tickNear(e.clientY);
+  if (!tick) return;
+  e.preventDefault();
+  railDrag = true;
+  try { $('jump-rail').setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+  showRail(true);
+  jumpToCard(Number(tick.dataset.card), false);
+  markRail();
+});
+
+$('jump-rail').addEventListener('pointermove', (e) => {
+  if (!railDrag) return;
+  const tick = tickNear(e.clientY);
+  if (!tick) return;
+  jumpToCard(Number(tick.dataset.card), false);
+  markRail();
+});
+
+['pointerup', 'pointercancel'].forEach((type) =>
+  $('jump-rail').addEventListener(type, () => {
+    if (!railDrag) return;
+    railDrag = false;
+    showRail();                      // let it fade again now the finger is off
+  }));
+
 $('pan-pad').querySelectorAll('.pan-btn').forEach((button) => {
   const direction = button.dataset.pan;
   button.addEventListener('pointerdown', (e) => {
@@ -1535,8 +1750,10 @@ document.addEventListener('keydown', (e) => {
 settleAfterRefresh();
 
 mixer.colors = loadCustomColors();
+recent = loadRecent();
 
 buildGallery();
+showRail();           // one look at the rail on the way in, so it is not a secret
 buildPalette();
 buildBrushes();
 applyView();          // starts the zoom buttons in their 1x state

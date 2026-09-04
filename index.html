@@ -31,7 +31,12 @@
           aria-label="Get the newest version">&#8635;</button>
   <h1 class="title">Color Me</h1>
   <p class="subtitle">Pick a picture!</p>
-  <div id="gallery" class="gallery"></div>
+
+  <!-- the rail sits in the gallery's right gutter and does not scroll with it -->
+  <div class="gallery-wrap">
+    <div id="gallery" class="gallery"></div>
+    <div id="jump-rail" class="jump-rail"></div>
+  </div>
 </section>
 
 <!-- ============ COLORING SCREEN ============ -->
