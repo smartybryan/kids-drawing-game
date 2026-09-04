@@ -243,6 +243,16 @@ function buildJumpRail() {
   const rail = $('jump-rail');
   rail.innerHTML = '';
 
+  // Not a picture number: the top of the gallery is above the first card, where
+  // the "keep going" row is, so this one is about the scroll and not the list.
+  const top = document.createElement('button');
+  top.className = 'jump-tick jump-top';
+  top.type = 'button';
+  top.textContent = 'Top';
+  top.dataset.top = '1';
+  top.setAttribute('aria-label', 'Back to the top');
+  rail.appendChild(top);
+
   for (let n = JUMP_EVERY; n <= DRAWINGS.length; n += JUMP_EVERY) {
     const tick = document.createElement('button');
     tick.className = 'jump-tick';
@@ -253,6 +263,15 @@ function buildJumpRail() {
     rail.appendChild(tick);
   }
   markRail();
+}
+
+function jumpFromTick(tick, smooth) {
+  if (tick.dataset.top) return jumpToTop(smooth);
+  jumpToCard(Number(tick.dataset.card), smooth);
+}
+
+function jumpToTop(smooth) {
+  $('gallery').scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
 }
 
 /* Scroll so the wanted card sits at the top of the view. Measured rather than
@@ -276,12 +295,19 @@ function markRail() {
   if (!rail.children.length || !galleryCards.length) return;
 
   const at = firstShowing();
-  const nearest = Math.min(rail.children.length - 1,
-                           Math.max(0, Math.round((at + 1) / JUMP_EVERY) - 1));
+  let nearest = null, bestGap = Infinity;
 
-  for (let i = 0; i < rail.children.length; i++) {
-    rail.children[i].classList.toggle('here', i === nearest);
+  for (const tick of rail.children) {
+    if (tick.dataset.top) continue;
+    const gap = Math.abs(Number(tick.dataset.card) - at);
+    if (gap < bestGap) { bestGap = gap; nearest = tick; }
   }
+
+  // Sitting at the very top is the one place Top is the honest answer: what is
+  // on screen there is the "keep going" row, which has no number.
+  if ($('gallery').scrollTop < 4) nearest = rail.firstElementChild;
+
+  for (const tick of rail.children) tick.classList.toggle('here', tick === nearest);
 }
 
 /* A binary search, not a walk: cards later in the list are never higher up the
@@ -889,6 +915,17 @@ function goBack() {
   buildGallery();                      // refresh thumbnails with the new colors
   $('color-screen').classList.add('hidden');
   $('picker-screen').classList.remove('hidden');
+
+  /* Back to the top, where the row of pictures with work on them is -- and the
+   * one just left is the first card in it.
+   *
+   * This has to come after the screen is shown. Emptying the gallery and
+   * refilling it happens in one go, so the browser never lays out the empty
+   * version and never drops the scroll itself; and a screen that is still
+   * display:none has no scroll to set, so doing this any earlier is a no-op the
+   * browser undoes when the gallery comes back. */
+  $('gallery').scrollTop = 0;
+  markRail();
 }
 
 
@@ -1589,7 +1626,7 @@ $('jump-rail').addEventListener('pointerdown', (e) => {
   railDrag = true;
   try { $('jump-rail').setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
   showRail(true);
-  jumpToCard(Number(tick.dataset.card), false);
+  jumpFromTick(tick, false);
   markRail();
 });
 
@@ -1597,7 +1634,7 @@ $('jump-rail').addEventListener('pointermove', (e) => {
   if (!railDrag) return;
   const tick = tickNear(e.clientY);
   if (!tick) return;
-  jumpToCard(Number(tick.dataset.card), false);
+  jumpFromTick(tick, false);
   markRail();
 });
 

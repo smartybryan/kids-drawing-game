@@ -194,9 +194,16 @@ day, for the child who wants that one. Two things shorten it.
 A picture gets colored over several sittings, and the one wanted next is nearly
 always the one wanted last. So every picture with work on it is repeated in a
 short row at the top under **Keep going!**, newest first, and the rest follow
-under **All the pictures**. Leaving a picture lands back at the top of the
-gallery, which puts the one just left under the finger that got there — the long
-scroll it used to take is gone rather than shortened.
+under **All the pictures**. Leaving a picture sends the gallery back to the top,
+which puts the one just left under the finger that got there — the long scroll it
+used to take is gone rather than shortened.
+
+Going back to the top is a line of its own in `goBack`, and it has to come after
+the picker screen is shown. Emptying the gallery and refilling it happens in one
+go, so the browser never lays out the empty version and never drops the scroll
+itself; and a screen still sitting at `display: none` has no scroll to set, so
+doing it any earlier is a no-op that the browser undoes when the gallery
+reappears.
 
 A picture earns its place by having color on it, not by having been opened: a
 mis-tap should not push yesterday's picture down the row. **Start Over** takes it
@@ -212,8 +219,12 @@ plain gallery, exactly as it was.
 
 ### The jump rail
 
-The numbers down the right edge are the other half. Every tenth picture gets one;
-tapping it puts that picture at the top of the view, and sliding a finger down
+The numbers down the right edge are the other half, under a **Top** button that
+goes to the very top — above the first card, where the "keep going" row is, so it
+is about the scroll rather than about a picture. It is the one tick that is not a
+number, and it is what the rail rings while the gallery is sitting up there,
+since what is on screen then has no number to name it. Every tenth picture gets one;
+tapping one puts that picture at the top of the view, and sliding a finger down
 them scrubs, the gallery following as it goes rather than waiting for the finger
 to lift. The number the gallery is currently sitting at wears a ring, so the rail
 doubles as a place marker.

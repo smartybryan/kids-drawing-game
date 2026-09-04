@@ -117,6 +117,10 @@ body {
   cursor: pointer;
 }
 
+/* "Top" is three letters where the rest are two digits, so it takes the size it
+   needs rather than making the rail wider for everything */
+.jump-top { font-size: 13px; }
+
 /* where the gallery is now */
 .jump-tick.here {
   background: var(--paper);
