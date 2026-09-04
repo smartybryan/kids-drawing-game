@@ -1330,6 +1330,48 @@ function savePng() {
 }
 
 
+/* ------------------------------------------------------- getting an update
+ *
+ * Added to a home screen this app runs without browser chrome: no address bar,
+ * no reload button, no pull-to-refresh. A new version put on the server can
+ * therefore sit unseen behind the copy the device has cached, and there is no
+ * way in from outside. Hence a refresh of our own.
+ *
+ * location.reload() would not do it -- that request is answered out of the very
+ * cache holding the old copy. Loading an address the device has never fetched
+ * has to go to the network, and the index.html that comes back carries the
+ * current ?v= stamps, so the script and the stylesheet follow it down.
+ */
+const FRESH_KEY = 'fresh';
+
+function refreshApp() {
+  closeToolMenu();
+  if (state.drawing) {                  // the reload keeps every color; save first anyway
+    if (isPaintPage(state.drawing)) savePainting(); else saveColors();
+  }
+  const here = location.href.split('#')[0].split('?')[0];
+  location.replace(`${here}?${FRESH_KEY}=${Date.now()}`);
+}
+
+/* Arriving on the busted address fixes this visit only: the home screen icon
+ * still points at the plain one, and the device still has the old page stored
+ * under it. Asking for that address again with cache: 'reload' goes to the
+ * network AND replaces what is stored, so the next launch starts new too.
+ *
+ * Then the marker comes off the address, leaving the app back at its own URL. */
+function settleAfterRefresh() {
+  if (!new URLSearchParams(location.search).has(FRESH_KEY)) return;
+
+  try {
+    fetch(location.pathname, { cache: 'reload' }).catch(() => {});
+    history.replaceState(null, '', location.pathname);
+  } catch (e) {
+    /* an old browser, or a page opened straight off disk -- either way this
+     * visit is already the fresh one, which was the point */
+  }
+}
+
+
 /* ------------------------------------------------------------------- wire up */
 
 const canvasEl = $('canvas');
@@ -1455,6 +1497,8 @@ $('confirm').addEventListener('click', (e) => {
   if (e.target === $('confirm')) closeConfirm();
 });
 $('btn-save').addEventListener('click', savePng);
+$('btn-refresh').addEventListener('click', refreshApp);
+$('btn-refresh-bar').addEventListener('click', refreshApp);
 
 const PAN_KEYS = {
   ArrowLeft:  [ 60,   0],
@@ -1487,6 +1531,8 @@ document.addEventListener('keydown', (e) => {
     movePan(...PAN_KEYS[e.key]);
   }
 });
+
+settleAfterRefresh();
 
 mixer.colors = loadCustomColors();
 

@@ -23,6 +23,8 @@ Netlify, a folder served by `python3 -m http.server`). Copy all four files.
 - **Four brush sizes** on the painting pages, down to a tip thin enough for a
   tight corner.
 - **Zoom and pan** — pinch or scroll, two fingers to drag, or the pan pad.
+- **A refresh button** (↻), because a home-screen app has no address bar to
+  reload from — see **Shipping a new version**.
 - **Undo** (also Ctrl/Cmd-Z) and **Start Over**, which asks first, and which one
   Undo puts back.
 - **Zoom and pan** for pictures with small parts — pinch or scroll to zoom, drag
@@ -344,9 +346,47 @@ behaves like an app rather than a web page. Two things to know about that:
   page in the browser, so work done in Safari may not appear in the installed
   copy. Worth checking before the kids invest an afternoon in a picture.
 
+## Shipping a new version
+
+Added to a home screen this runs without browser chrome, and that cuts both
+ways: there is no address bar for a child to wander into, and no reload for a
+grown-up either. A new `app.js` on the server sits unseen behind the copy the
+device has cached, and nothing on the page can reach past it. Two things deal
+with that.
+
+**Stamped asset URLs.** `index.html` asks for `app.js?v=20260904`, and likewise
+for `styles.css` and `drawings.js`. Change any of those three files and bump the
+stamp on all three:
+
+    sed -i '' 's/?v=[0-9]*/?v=20260910/g' index.html
+
+A changed file then arrives under a name no cache has ever seen, so it cannot be
+answered out of an old one. Forgetting to bump it is the whole failure this
+guards against, so bump it in the same commit as the change.
+
+**The ↻ button**, top right of the gallery and in the coloring bar. It reloads
+the app the only way that actually works from inside a cached page:
+
+- `location.reload()` is no use — that request is answered out of the very cache
+  holding the old copy.
+- So it navigates to `?fresh=<timestamp>` instead. Nothing has ever fetched that
+  address, so it has to go to the network, and the `index.html` that comes back
+  carries the current `?v=` stamps, which drag the script and stylesheet down
+  with it.
+- That alone would fix one visit. The home screen icon still points at the plain
+  address, and the old page is still stored under it — so on the way back up the
+  app refetches its own address with `cache: 'reload'`, which replaces what is
+  stored there. The next launch starts new too.
+- Then the marker comes off the address bar with `replaceState`, leaving the app
+  at its own URL.
+
+Nothing is lost in a reload: colors and strokes are written to `localStorage` as
+they happen, and the button saves again before it goes.
+
 ## Files
 
-    index.html                 the two screens (gallery, coloring page)
+    index.html                 the two screens (gallery, coloring page), and
+                               the version stamps on the assets
     styles.css                 layout, big touch targets, the crayon palette
     drawings.js                the pictures (about 5MB — see below)
     app.js                     picking, filling, painting, undo, saving

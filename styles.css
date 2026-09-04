@@ -92,6 +92,33 @@ body {
   font-weight: bold;
 }
 
+/* Added to a home screen there is no address bar to reload from, so the way to a
+ * newer version has to be on the page. It sits quietly in the corner: this is
+ * for the grown-up who just changed something, not for the child. */
+.refresh-btn {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 2;
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  border: 4px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+  opacity: .55;
+  cursor: pointer;
+}
+
+.refresh-btn:hover { opacity: 1; }
+.refresh-btn:active { transform: translateY(4px); box-shadow: none; opacity: 1; }
+
+
 /* --------------------------------------------------------- coloring screen */
 
 .toolbar {
@@ -122,6 +149,10 @@ body {
   box-shadow: var(--shadow);
   cursor: pointer;
 }
+
+/* the refresh in the bar is an icon on its own, so it does not need the width a
+   text button wants */
+#btn-refresh-bar { font-size: 25px; line-height: 1; padding: 10px 16px; }
 
 .tool-btn:active { transform: translateY(4px); box-shadow: none; }
 .tool-btn:disabled { opacity: .4; cursor: default; transform: none; }

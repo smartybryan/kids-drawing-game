@@ -16,12 +16,19 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Color Me">
 
-<link rel="stylesheet" href="styles.css">
+<!-- Asset URLs carry a version stamp. Added to a home screen this app is served
+     out of a cache no address bar can reach past, so a changed file has to
+     arrive under a name that cache has never seen. BUMP THE STAMP ON ALL THREE
+     WHENEVER app.js, styles.css OR drawings.js CHANGES -- otherwise the old
+     copy keeps being served. See "Shipping a new version" in the README. -->
+<link rel="stylesheet" href="styles.css?v=20260904">
 </head>
 <body>
 
 <!-- ============ PICKER SCREEN ============ -->
 <section id="picker-screen" class="screen">
+  <button id="btn-refresh" class="refresh-btn" title="Get the newest version"
+          aria-label="Get the newest version">&#8635;</button>
   <h1 class="title">Color Me</h1>
   <p class="subtitle">Pick a picture!</p>
   <div id="gallery" class="gallery"></div>
@@ -39,6 +46,8 @@
       <button id="btn-more" class="tool-btn" title="More" aria-label="More"
               aria-expanded="false">&#8943;</button>
       <div id="tool-menu" class="tool-menu">
+        <button id="btn-refresh-bar" class="tool-btn" title="Get the newest version"
+                aria-label="Get the newest version">&#8635;</button>
         <button id="btn-clear" class="tool-btn" title="Start over">Start Over</button>
         <button id="btn-save" class="tool-btn tool-btn-primary" title="Save picture">&#11015; Save</button>
       </div>
@@ -97,7 +106,7 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<script src="drawings.js"></script>
-<script src="app.js"></script>
+<script src="drawings.js?v=20260904"></script>
+<script src="app.js?v=20260904"></script>
 </body>
 </html>
