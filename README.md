@@ -415,11 +415,16 @@ grown-up either. A new `app.js` on the server sits unseen behind the copy the
 device has cached, and nothing on the page can reach past it. Two things deal
 with that.
 
-**Stamped asset URLs.** `index.html` asks for `app.js?v=20260904`, and likewise
+**Stamped asset URLs.** `index.html` asks for `app.js?v=20260904-2`, and likewise
 for `styles.css` and `drawings.js`. Change any of those three files and bump the
 stamp on all three:
 
-    sed -i '' 's/?v=[0-9]*/?v=20260910/g' index.html
+    sed -i '' 's|?v=[^"]*|?v=20260910|g' index.html
+
+The stamp is the date, with `-2`, `-3` and so on for a second change the same
+day — the point is only that it differs from last time, and a date says when at
+a glance. The pattern matches to the quote rather than to digits, so it replaces
+a stamp that already carries a suffix.
 
 A changed file then arrives under a name no cache has ever seen, so it cannot be
 answered out of an old one. Forgetting to bump it is the whole failure this
